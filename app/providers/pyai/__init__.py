@@ -6,6 +6,7 @@ Only this package may know PyAI response shapes.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from typing import Any
 from uuid import UUID
@@ -40,6 +41,8 @@ from app.providers.normalized import (
 )
 
 _TRANSIENT_HTTP = {408, 429, 500, 502, 503, 504}
+_RECAP_SCOPES = frozenset({"recap:read", "recap:*", "*"})
+_log = logging.getLogger(__name__)
 
 
 def verify_pyai_webhook_signature(secret: bytes, raw_body: bytes, header_value: str | None) -> None:
@@ -336,23 +339,59 @@ class PyAIRecapProvider:
         self._settings = settings
         self._client = client or httpx.Client(timeout=60.0)
         self._owns_client = client is None
+        self._recap_allowed: bool | None = None
 
     def close(self) -> None:
         if self._owns_client:
             self._client.close()
 
-    def get_recap(self, call_id: UUID, public_call_id: str) -> NormalizedRecap:
-        url = f"{self._settings.pyai_base_url.rstrip('/')}/recap/calls/{public_call_id}"
-        headers = {
+    def _auth_headers(self) -> dict[str, str]:
+        return {
             "Authorization": f"Bearer {self._settings.pyai_api_key}",
             "Accept": "application/json",
         }
+
+    def _ensure_recap_allowed(self) -> None:
+        if self._recap_allowed is True:
+            return
+        if self._recap_allowed is False:
+            raise PyAIScopeMissing("PyAI Recap is not in this key's scopes")
+        url = f"{self._settings.pyai_base_url.rstrip('/')}/me"
+        try:
+            response = self._client.get(url, headers=self._auth_headers())
+        except httpx.HTTPError as exc:
+            self._recap_allowed = False
+            raise PyAIScopeMissing("Could not inspect PyAI key scopes for Recap") from exc
+        if response.status_code == 401:
+            raise PyAIAuthFailed("PyAI authentication failed")
+        scopes: list[str] = []
+        if response.status_code == 200:
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = {}
+            if isinstance(payload, dict):
+                raw = payload.get("scopes") or []
+                if isinstance(raw, list):
+                    scopes = [str(item) for item in raw]
+        self._recap_allowed = bool(_RECAP_SCOPES.intersection(scopes))
+        if not self._recap_allowed:
+            _log.info("skipping PyAI Recap: key has no recap:read scope")
+            raise PyAIScopeMissing("PyAI Recap is not in this key's scopes")
+
+    def get_recap(self, call_id: UUID, public_call_id: str) -> NormalizedRecap:
+        self._ensure_recap_allowed()
+        url = f"{self._settings.pyai_base_url.rstrip('/')}/recap/calls/{public_call_id}"
+        headers = self._auth_headers()
         try:
             response = self._client.get(url, headers=headers)
         except httpx.HTTPError as exc:
             raise PyAIRecapFailed("Failed to fetch PyAI Recap") from exc
         if response.status_code in {401, 403}:
-            raise PyAIAuthFailed("PyAI authentication failed")
+            raise PyAIScopeMissing(
+                "PyAI Recap is not in this key's scopes (sandbox keys omit recap:read)",
+                details={"status_code": response.status_code, "public_call_id": public_call_id},
+            )
         if response.status_code == 404:
             raise PyAIScopeMissing(
                 "PyAI Recap is unavailable for this call or account",

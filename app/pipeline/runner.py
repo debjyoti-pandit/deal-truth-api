@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -135,8 +136,10 @@ def run_pipeline(deps: PipelineDeps, call_id: UUID) -> CallStatus:
         kind = exc.failure_kind
         if kind == FailureKind.TRANSCRIPTION:
             transition(session, call, CallStatus.FAILED, failure_kind=kind)
-        elif kind == FailureKind.RECAP:
-            # Recap failure must not delete a successful transcript.
+        elif kind == FailureKind.RECAP or (
+            kind == FailureKind.ML_INFERENCE and call.transcript_segments
+        ):
+            # Recap/ML failure must not delete a successful transcript.
             if call.transcript_segments:
                 warnings.append(exc.code)
                 transition(session, call, CallStatus.PARTIAL, failure_kind=kind)
@@ -308,6 +311,31 @@ def _recap(deps: PipelineDeps, call: Call, warnings: list[str]) -> NormalizedRec
         return None
 
 
+def _ml_or_warn[T](
+    deps: PipelineDeps,
+    call: Call,
+    warnings: list[str],
+    stage: str,
+    fn: Callable[[], list[T]],
+) -> list[T]:
+    try:
+        return fn()
+    except NamedError as exc:
+        if exc.failure_kind != FailureKind.ML_INFERENCE:
+            raise
+        warnings.append(exc.code)
+        log_event(
+            deps.session,
+            call,
+            stage=stage,
+            state=EventState.FAILED,
+            error_code=exc.code,
+            message=exc.message,
+        )
+        deps.session.commit()
+        return []
+
+
 def _analyze(
     deps: PipelineDeps,
     call: Call,
@@ -321,9 +349,21 @@ def _analyze(
     session.commit()
 
     texts = [v.text for v in views]
-    classifications = deps.ml.classify(texts) if texts else []
+    classifications = (
+        _ml_or_warn(deps, call, warnings, "classify", lambda: deps.ml.classify(texts)) if texts else []
+    )
     customer_idx = [i for i, v in enumerate(views) if v.speaker_role == SpeakerRole.CUSTOMER]
-    emotions = deps.ml.emotion([views[i].text for i in customer_idx]) if customer_idx else []
+    emotions = (
+        _ml_or_warn(
+            deps,
+            call,
+            warnings,
+            "emotion",
+            lambda: deps.ml.emotion([views[i].text for i in customer_idx]),
+        )
+        if customer_idx
+        else []
+    )
     emotion_by_index = dict(zip(customer_idx, emotions, strict=False))
     updated: list[SegmentView] = []
     for i, view in enumerate(views):
@@ -388,7 +428,17 @@ def _analyze(
     transition(session, call, CallStatus.INDEXING)
     session.commit()
     chunks = chunk_segments(views)
-    embeddings = deps.ml.embed([str(c["text"]) for c in chunks]) if chunks else []
+    embeddings = (
+        _ml_or_warn(
+            deps,
+            call,
+            warnings,
+            "embed",
+            lambda: deps.ml.embed([str(c["text"]) for c in chunks]),
+        )
+        if chunks
+        else []
+    )
     persist_chunks(session, call, chunks, embeddings)
 
     report = build_report(call, recap, metrics, shipped, warnings)

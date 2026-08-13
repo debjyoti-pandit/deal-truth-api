@@ -55,6 +55,8 @@ POSITIVE_EMOTIONS = frozenset(
         "optimism",
         "pride",
         "relief",
+        "enthusiastic",
+        "interested",
     }
 )
 NEGATIVE_EMOTIONS = frozenset(
@@ -70,9 +72,38 @@ NEGATIVE_EMOTIONS = frozenset(
         "nervousness",
         "remorse",
         "sadness",
+        "hesitant",
+        "concerned",
+        "frustrated",
+        "skeptical",
+        "rejecting",
     }
 )
-NEUTRAL_EMOTIONS = frozenset({"curiosity", "confusion", "realization", "surprise", "neutral"})
+NEUTRAL_EMOTIONS = frozenset(
+    {
+        "curiosity",
+        "confusion",
+        "realization",
+        "surprise",
+        "neutral",
+        "curious",
+        "uncertain",
+    }
+)
+
+_LABEL_BY_SLUG = {label.replace(" ", "_"): label for label in SALES_LABELS}
+
+
+def canonical_sales_label(raw: str) -> str:
+    """Map Worker slug ids (`pain_point`) back to API extractor keys (`pain point`)."""
+    key = raw.strip().lower().replace("-", "_")
+    if key in _LABEL_BY_SLUG:
+        return _LABEL_BY_SLUG[key]
+    spaced = key.replace("_", " ")
+    for label in SALES_LABELS:
+        if label.lower() == spaced:
+            return label
+    return raw.strip()
 
 
 class LabelScore(BaseModel):
@@ -94,8 +125,9 @@ class ClassificationResult(BaseModel):
     labels: list[LabelScore] = Field(default_factory=list)
 
     def score(self, label: str) -> float:
+        want = canonical_sales_label(label)
         for item in self.labels:
-            if item.label == label:
+            if item.label == label or canonical_sales_label(item.label) == want:
                 return item.score
         return 0.0
 
@@ -117,7 +149,8 @@ class MLInferenceClient(Protocol):
 class DealTruthMLClient:
     def __init__(self, settings: Settings, client: httpx.Client | None = None) -> None:
         self._settings = settings
-        self._client = client or httpx.Client(timeout=60.0)
+        # Worker classify/emotion chunk sequentially inside one HTTP request.
+        self._client = client or httpx.Client(timeout=httpx.Timeout(300.0, connect=10.0))
         self._owns_client = client is None
 
     def close(self) -> None:
@@ -212,13 +245,18 @@ def _parse_classification(item: object) -> ClassificationResult:
     if isinstance(item, dict):
         raw = item.get("labels") or item.get("scores") or item
         if isinstance(raw, dict):
-            labels = [LabelScore(label=str(k), score=float(v)) for k, v in raw.items() if isinstance(v, (int, float))]
+            labels = [
+                LabelScore(label=canonical_sales_label(str(k)), score=float(v))
+                for k, v in raw.items()
+                if isinstance(v, (int, float))
+            ]
         elif isinstance(raw, list):
             for entry in raw:
                 if isinstance(entry, dict):
                     labels.append(
                         LabelScore(
-                            label=str(entry.get("label") or entry.get("name")), score=float(entry.get("score") or 0)
+                            label=canonical_sales_label(str(entry.get("label") or entry.get("name") or "")),
+                            score=float(entry.get("score") or 0),
                         )
                     )
     return ClassificationResult(labels=labels)

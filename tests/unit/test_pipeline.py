@@ -29,6 +29,18 @@ def test_partial_when_recap_fails(session: Session, settings: Settings, blob: Me
     assert segs, "recap failure must not delete the transcript"
 
 
+def test_partial_when_ml_is_down(session: Session, settings: Settings, blob: MemoryBlobStore) -> None:
+    call_id = run_scenario(session, settings, blob, "happy_path", ml_fail=True)
+    call = session.get(Call, call_id)
+    assert call is not None
+    assert call.status == CallStatus.PARTIAL
+    from app.models.transcript import TranscriptSegment
+    from sqlalchemy import select
+
+    segs = session.scalars(select(TranscriptSegment).where(TranscriptSegment.call_id == call_id)).all()
+    assert segs, "ML failure must not delete the transcript"
+
+
 def test_failed_when_transcription_fails(session: Session, settings: Settings, blob: MemoryBlobStore) -> None:
     call_id = run_scenario(session, settings, blob, "happy_path", transcribe_fail=True)
     call = session.get(Call, call_id)

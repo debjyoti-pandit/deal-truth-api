@@ -79,11 +79,21 @@ def blob() -> MemoryBlobStore:
     return MemoryBlobStore()
 
 
-def _scenario_providers(name: str, *, recap_fail: bool = False, transcribe_fail: bool = False):
+def _scenario_providers(
+    name: str, *, recap_fail: bool = False, transcribe_fail: bool = False, ml_fail: bool = False
+):
     data = SCENARIOS[name]
     transcription = FakeTranscriptionProvider(data["transcript"], fail=transcribe_fail)
     recap = FakeRecapProvider(data["recap"], fail=recap_fail)
     ml = FakeMLClient(classifications=data["classifications"], emotions=data.get("emotions") or {})
+    if ml_fail:
+        from app.core.errors import MLServiceUnavailable
+
+        class DownML(FakeMLClient):
+            def classify(self, texts: list[str], labels: list[str] | None = None) -> list:
+                raise MLServiceUnavailable("ml down")
+
+        ml = DownML()
     return transcription, recap, ml, data
 
 
@@ -95,6 +105,7 @@ def run_scenario(
     *,
     recap_fail: bool = False,
     transcribe_fail: bool = False,
+    ml_fail: bool = False,
     customer_name: str = "Sarah",
     rep_name: str = "Rahul",
 ) -> UUID:
@@ -102,7 +113,9 @@ def run_scenario(
     from app.models.call import AudioAsset, Call
     from app.models.terms import TrackedTerm
 
-    transcription, recap, ml, data = _scenario_providers(name, recap_fail=recap_fail, transcribe_fail=transcribe_fail)
+    transcription, recap, ml, data = _scenario_providers(
+        name, recap_fail=recap_fail, transcribe_fail=transcribe_fail, ml_fail=ml_fail
+    )
     call = Call(
         public_call_id=uuid4().hex[:12],
         title=name,
