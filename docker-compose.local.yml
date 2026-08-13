@@ -1,0 +1,31 @@
+# Local full stack: Postgres in Docker + force DATABASE_* to the compose postgres service.
+# Usage: docker compose --profile local-db -f docker-compose.yml -f docker-compose.local.yml up -d
+# Or:    make up-local
+
+services:
+  postgres:
+    profiles: ["local-db"]
+
+  migrate:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://deal_truth:deal_truth@postgres:5432/deal_truth
+      DATABASE_SYNC_URL: postgresql+psycopg://deal_truth:deal_truth@postgres:5432/deal_truth
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://deal_truth:deal_truth@postgres:5432/deal_truth
+      DATABASE_SYNC_URL: postgresql+psycopg://deal_truth:deal_truth@postgres:5432/deal_truth
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://deal_truth:deal_truth@postgres:5432/deal_truth
+      DATABASE_SYNC_URL: postgresql+psycopg://deal_truth:deal_truth@postgres:5432/deal_truth
+    depends_on:
+      postgres:
+        condition: service_healthy

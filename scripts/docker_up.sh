@@ -1,10 +1,26 @@
 #!/usr/bin/env bash
-# Bring up the Deal Truth API stack in Docker (env, Postgres, Redis, SeaweedFS, migrate, API, worker).
+# Bring up the Deal Truth API stack in Docker.
+# Default: DATABASE_* from .env (e.g. Supabase Session pooler).
+# Local:   DEAL_TRUTH_DB=local  (or pass --local) uses Docker Postgres via docker-compose.local.yml
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 export PYTHONPATH="${ROOT}${PYTHONPATH:+:$PYTHONPATH}"
+
+MODE="${DEAL_TRUTH_DB:-env}"
+for arg in "$@"; do
+  case "$arg" in
+    --local|local) MODE=local ;;
+    --env|env|supabase) MODE=env ;;
+    -h|--help)
+      echo "Usage: $0 [--local|--env]"
+      echo "  --env    use DATABASE_* from .env (default; Supabase when configured)"
+      echo "  --local  Docker Postgres + local URLs (ignores Supabase in .env for compose)"
+      exit 0
+      ;;
+  esac
+done
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "docker is required" >&2
@@ -27,15 +43,28 @@ else
   echo "skip in-process check (need .venv or uv)" >&2
 fi
 
-docker compose up --build -d --wait --remove-orphans --force-recreate
+COMPOSE=(docker compose -f docker-compose.yml)
+if [ "$MODE" = "local" ]; then
+  echo "Starting stack with LOCAL Docker Postgres..."
+  COMPOSE+=(--profile local-db -f docker-compose.local.yml)
+else
+  echo "Starting stack with DATABASE_* from .env..."
+fi
+
+"${COMPOSE[@]}" up --build -d --wait --remove-orphans --force-recreate
 
 echo ""
-echo "Deal Truth API is up."
+echo "Deal Truth API is up (${MODE} DB)."
 echo "  API:     http://localhost:8000"
 echo "  Docs:    http://localhost:8000/docs"
 echo "  Flower:  http://localhost:5555  (Celery tasks — local only)"
 echo "  Health:  curl http://localhost:8000/health/live"
 echo "  Ngrok:   http://localhost:4040"
+if [ "$MODE" = "local" ]; then
+  echo "  DB:      local Docker postgres (deal_truth@localhost:5432/deal_truth)"
+else
+  echo "  DB:      from .env DATABASE_URL"
+fi
 
 TUNNEL="$(python3 scripts/print_ngrok_url.py http://127.0.0.1:4040 30 || true)"
 if [ -n "${TUNNEL}" ]; then

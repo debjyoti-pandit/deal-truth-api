@@ -1,5 +1,8 @@
 services:
+  # Optional local Postgres. Default stack uses DATABASE_* from .env (e.g. Supabase).
+  # Start with: docker compose --profile local-db up -d postgres
   postgres:
+    profiles: ["local-db"]
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: deal_truth
@@ -48,12 +51,6 @@ services:
     build: .
     command: alembic upgrade head
     env_file: .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://deal_truth:deal_truth@postgres:5432/deal_truth
-      DATABASE_SYNC_URL: postgresql+psycopg://deal_truth:deal_truth@postgres:5432/deal_truth
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: "no"
 
   api:
@@ -61,8 +58,6 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://deal_truth:deal_truth@postgres:5432/deal_truth
-      DATABASE_SYNC_URL: postgresql+psycopg://deal_truth:deal_truth@postgres:5432/deal_truth
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       S3_ENDPOINT_URL: http://seaweedfs:8333
@@ -109,8 +104,6 @@ services:
     command: celery -A app.tasks.celery_app worker --loglevel=info
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://deal_truth:deal_truth@postgres:5432/deal_truth
-      DATABASE_SYNC_URL: postgresql+psycopg://deal_truth:deal_truth@postgres:5432/deal_truth
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       S3_ENDPOINT_URL: http://seaweedfs:8333
