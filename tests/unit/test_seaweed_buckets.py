@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from botocore.exceptions import EndpointConnectionError
-
 from app.core.errors import BlobUploadFailed
 from app.core.settings import Settings
 from app.storage.seaweed import SeaweedFSS3BlobStore
+from botocore.exceptions import EndpointConnectionError
 
 
 def _store() -> SeaweedFSS3BlobStore:
@@ -18,7 +17,7 @@ def _store() -> SeaweedFSS3BlobStore:
     )
     store = SeaweedFSS3BlobStore(settings)
     store._client = MagicMock()
-    store._buckets = ("deal-truth-audio",)
+    store._buckets = ("deal-truth-audio",)  # type: ignore[assignment]
     return store
 
 

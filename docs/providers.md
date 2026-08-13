@@ -7,9 +7,18 @@ The intelligence pipeline never depends on PyAI or S3 response shapes.
 | `TranscriptionProvider` | `PyAITranscriptionProvider` | Submit Hear jobs, poll or webhook, fetch authoritative result, normalize |
 | `CallRecapProvider` | `PyAIRecapProvider` | `GET /recap/calls/{call_id}`; scope failures become capability warnings |
 | `ComplianceProvider` | `PyAITraceProvider` | Feature-flagged; never blocks P0 |
-| `MLInferenceClient` | `DealTruthMLClient` | `/classify`, `/emotion`, `/embed`, `/generate` |
+| `MLInferenceClient` | `DealTruthMLClient` | `/classify`, `/emotion`, `/embed`, `/generate` on the `deal-truth-ml` Cloudflare Worker |
 | `BlobStore` | `SeaweedFSS3BlobStore` | Only module that imports boto3 |
 
 Normalized models: `NormalizedTranscript`, `NormalizedRecap`.
 
-Webhook verification uses HMAC over the **raw request body** (`X-PyAI-Signature`). The webhook wakes the Celery worker (Redis); the job is always re-fetched. Local Compose exposes the API with ngrok so PyAI can reach the webhook and signed `audio_url`. Polling is the fallback when the tunnel is unavailable.
+Webhook verification uses HMAC over the **raw request body** (`X-PyAI-Signature`). The webhook wakes the Celery worker (Redis); the job is always re-fetched. Local Compose exposes the API with ngrok so PyAI can reach the webhook and signed `audio_url`. Polling is the fallback when the tunnel is unavailable. `GET /health/ready` pings Celery (`workers` count) so a dead worker is observable, not silent.
+
+## DealTruthMLClient details
+
+- Base URL: `ML_SERVICE_BASE_URL`, else `https://{ML_NGROK_DOMAIN}`, else `http://localhost:8081`.
+- Auth: Bearer `ML_SERVICE_API_KEY` (Worker `INTERNAL_API_TOKEN`); adds `ngrok-skip-browser-warning` for ngrok hosts.
+- 300s read timeout: the Worker chunks classify/emotion internally within one HTTP request.
+- Worker label slugs (`pain_point`) map back to extractor keys (`pain point`) via `canonical_sales_label`.
+- Embeddings are 1024-dim and land in pgvector `vector(1024)` (`transcript_chunks.embedding`).
+- Failure modes: named `ML_*` errors; pipeline ML failures downgrade the run to `PARTIAL` with warnings; `POST .../ask` degrades to lexical retrieval. An ML outage is never a deal judgment.

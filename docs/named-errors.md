@@ -34,4 +34,14 @@ Every API error uses:
 
 `DATABASE_WRITE_FAILED`, `MIGRATION_REQUIRED`
 
+## Request / general
+
+`NOT_FOUND` (404), `CONFLICT` (409), `NOT_READY` (409, retryable), `UNAUTHORIZED` (401),
+`FORBIDDEN` (403), `INVALID_SOURCE_URL` (400), `SHARE_TOKEN_INVALID` (404),
+`SIGNED_URL_INVALID` (403), `CALL_CANCELLED` (409)
+
+`NOT_READY` is returned by `GET .../report`, `GET .../export/json|markdown`, and
+`GET /shared/{token}` until the call reaches `SHIPPED` or `PARTIAL`. Clients should poll or
+watch processing events; these endpoints never return a bare 500 for an unready call.
+
 Infrastructure failures may retry. Semantic failures (no evidence, wrong speaker, malformed input) must not retry.

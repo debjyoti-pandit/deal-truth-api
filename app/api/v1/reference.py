@@ -18,6 +18,7 @@ _ALLOWED: dict[str, str] = {
     "providers.md": "Provider interfaces",
     "deterministic-analysis.md": "Deterministic analysis",
     "named-errors.md": "Named errors",
+    "frontend-contract.md": "Frontend contract (gap resolutions)",
 }
 
 

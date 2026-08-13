@@ -50,6 +50,7 @@ If port 8000 is already in use (for example a host `make api` process), stop tha
 | OpenAPI UI | `https://<NGROK_DOMAIN>/docs` |
 | Doc catalog (JSON) | `https://<NGROK_DOMAIN>/api/v1/reference` |
 | Architecture | `https://<NGROK_DOMAIN>/api/v1/reference/ARCHITECTURE.md` |
+| **Frontend contract** | `https://<NGROK_DOMAIN>/api/v1/reference/frontend-contract.md` |
 | Evidence | `https://<NGROK_DOMAIN>/api/v1/reference/evidence.md` |
 | Providers | `https://<NGROK_DOMAIN>/api/v1/reference/providers.md` |
 | Deterministic analysis | `https://<NGROK_DOMAIN>/api/v1/reference/deterministic-analysis.md` |
@@ -61,6 +62,18 @@ Repo copies: [docs/README.md](docs/README.md).
 Point the frontend `API_BASE_URL` at `https://<NGROK_DOMAIN>`. Add the frontend page origin to `CORS_ORIGINS` in `.env` (the ngrok HTTPS origin is included automatically). On ngrok’s free tier, browser calls should send header `ngrok-skip-browser-warning: true`.
 
 `AUTH_MODE=none` plus a public ngrok URL means anyone with the host can call the API. Dev only.
+
+## Frontend integration (deal-truth-web)
+
+The full wire contract for the UI is [docs/frontend-contract.md](docs/frontend-contract.md), with committed sample payloads under [docs/examples/](docs/examples/) (regenerate with `uv run python scripts/generate_report_examples.py`). Highlights:
+
+- `GET .../report`, `.../export/*`, `GET /shared/{token}` return **409 `NOT_READY`** (not 500) until the call is `SHIPPED`/`PARTIAL`; the shared payload is `{ report, transcript }`.
+- `POST .../process` without audio → **400 `INVALID_AUDIO`**; the call never queues.
+- `GET .../audio-url` mints a short-lived signed URL usable directly as `<audio src>`.
+- `GET /api/v1/calls/overview` (dashboard aggregates), `GET /api/v1/recommendations` (suggested explorations), `GET /api/v1/search?q=` (grouped lexical search).
+- Event `stage` uses CallStatus vocabulary with lowercase `state`; SSE payload is documented, and `/stream` accepts `?api_key=` when auth is on.
+- Share URLs point at the web app via `PUBLIC_WEB_BASE_URL` (default `http://localhost:5173`).
+- Ask-the-Call degrades gracefully: `no_index` (200) when unindexed, lexical retrieval when `deal-truth-ml` is down.
 
 ### Host processes (optional)
 

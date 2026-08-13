@@ -69,4 +69,3 @@ def test_recap_skips_http_when_key_lacks_recap_read() -> None:
     assert recap.capability_warning == "PYAI_SCOPE_MISSING"
     assert any(url.endswith("/me") for url in seen)
     assert not any("/recap/calls/" in url for url in seen)
-

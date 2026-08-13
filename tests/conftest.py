@@ -43,6 +43,7 @@ def settings(tmp_path: Path, secret: str) -> Iterator[Settings]:
         "PYAI_RECAP_ENABLED": "true",
         "ML_GENERATION_ENABLED": "true",
         "PUBLIC_API_BASE_URL": "http://testserver",
+        "PUBLIC_WEB_BASE_URL": "",
         "NGROK_ENABLED": "false",
         "NGROK_DOMAIN": "",
         "S3_ACCESS_KEY": "",
@@ -79,9 +80,7 @@ def blob() -> MemoryBlobStore:
     return MemoryBlobStore()
 
 
-def _scenario_providers(
-    name: str, *, recap_fail: bool = False, transcribe_fail: bool = False, ml_fail: bool = False
-):
+def _scenario_providers(name: str, *, recap_fail: bool = False, transcribe_fail: bool = False, ml_fail: bool = False):
     data = SCENARIOS[name]
     transcription = FakeTranscriptionProvider(data["transcript"], fail=transcribe_fail)
     recap = FakeRecapProvider(data["recap"], fail=recap_fail)

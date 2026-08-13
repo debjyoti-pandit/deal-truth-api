@@ -97,7 +97,9 @@ def test_absence_based_risks_for_no_timeline(session: Session, settings: Setting
     assert any(r.evidence_status == EvidenceStatus.ABSENCE_BASED and "timeline" in r.title.lower() for r in risks)
 
 
-def _queued_call_with_audio(session: Session, settings: Settings, blob: MemoryBlobStore, *, status: CallStatus, pyai_job_id: str | None = None):
+def _queued_call_with_audio(
+    session: Session, settings: Settings, blob: MemoryBlobStore, *, status: CallStatus, pyai_job_id: str | None = None
+):
     from uuid import uuid4
 
     from app.core.enums import CallDirection, RecordingMode, SourceType
@@ -159,9 +161,7 @@ def test_process_call_on_shipped_is_idempotent(session: Session, settings: Setti
     assert call is not None
     assert call.status == CallStatus.SHIPPED
     transcription, recap, ml, _data = _scenario_providers("happy_path")
-    deps = PipelineDeps(
-        session=session, settings=settings, blob=blob, transcription=transcription, recap=recap, ml=ml
-    )
+    deps = PipelineDeps(session=session, settings=settings, blob=blob, transcription=transcription, recap=recap, ml=ml)
     outcome = run_pipeline(deps, call_id)
     assert outcome == CallStatus.SHIPPED
     refreshed = session.get(Call, call_id)

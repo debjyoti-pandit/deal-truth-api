@@ -97,7 +97,9 @@ def probes_from_openapi(schema: dict[str, Any]) -> list[Probe]:
 
 def _request_live(base_url: str, probe: Probe, timeout: float) -> ProbeResult:
     url = base_url.rstrip("/") + probe.path
-    request = Request(url, method=probe.method, headers={"Accept": "application/json", "Content-Type": "application/json"})
+    request = Request(
+        url, method=probe.method, headers={"Accept": "application/json", "Content-Type": "application/json"}
+    )
     if probe.method in {"POST", "PUT", "PATCH"}:
         request.data = b"{"
         request.add_header("Content-Type", "application/json")

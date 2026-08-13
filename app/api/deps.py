@@ -13,7 +13,7 @@ from app.core.job_ready import JobReadyWaiter, build_job_ready_waiter
 from app.core.security import verify_api_key
 from app.core.settings import Settings, get_settings
 from app.db import sync_session_factory
-from app.ml import MLInferenceClient, DealTruthMLClient
+from app.ml import DealTruthMLClient, MLInferenceClient
 from app.providers.base import CallRecapProvider, TranscriptionProvider
 from app.providers.pyai import PyAIRecapProvider, PyAITranscriptionProvider
 from app.storage.base import BlobStore
@@ -71,7 +71,11 @@ async def require_auth(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ) -> None:
     settings: Settings = request.app.state.container.settings
-    verify_api_key(authorization or x_api_key, settings)
+    provided = authorization or x_api_key
+    # GAP-BE-015: EventSource cannot set headers, so /stream also accepts ?api_key=.
+    if provided is None and request.url.path.endswith("/stream"):
+        provided = request.query_params.get("api_key")
+    verify_api_key(provided, settings)
 
 
 def get_sync_session() -> Iterator[Session]:

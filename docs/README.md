@@ -9,5 +9,7 @@ These files are the product and architecture reference. The running API also ser
 | [providers.md](providers.md) | Provider interfaces (PyAI, ML, blob store) |
 | [deterministic-analysis.md](deterministic-analysis.md) | Metrics and rules that are not model-generated |
 | [named-errors.md](named-errors.md) | Stable error codes for clients |
+| [frontend-contract.md](frontend-contract.md) | Frontend gap resolutions: NOT_READY, SSE shape, audio-url, search, share URLs |
+| [examples/](examples/) | SHIPPED `report`/`insights`/`metrics`/`events`/`transcript` sample payloads (synthetic fixture) |
 
 OpenAPI UI on a running instance: `/docs`.

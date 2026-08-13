@@ -1,0 +1,61 @@
+{
+  "call_id": "f2501fab-6dc7-4a23-8bcd-1935cca3cd58",
+  "language": "en",
+  "duration_ms": 30080,
+  "speakers": [
+    {
+      "id": "80553445-90f0-4bb8-95d3-08d9b8d98fa9",
+      "provider_speaker_id": "speaker_0",
+      "role": "seller",
+      "display_name": "Rahul",
+      "confidence": 0.75,
+      "manually_overridden": false
+    },
+    {
+      "id": "2672b0bf-4208-4769-8ffc-c726f659836f",
+      "provider_speaker_id": "speaker_1",
+      "role": "customer",
+      "display_name": "Sarah",
+      "confidence": 0.5,
+      "manually_overridden": false
+    }
+  ],
+  "segments": [
+    {
+      "id": "a06548f4-8e9a-4a58-8d52-cffbc50ab91d",
+      "speaker_id": "80553445-90f0-4bb8-95d3-08d9b8d98fa9",
+      "speaker_role": "seller",
+      "start_ms": 0,
+      "end_ms": 6080,
+      "text": "Thanks for taking the time today. I can walk you through how we route calls.",
+      "sequence_number": 0
+    },
+    {
+      "id": "edf76a3c-6976-405a-ba2d-5e9e51f710e5",
+      "speaker_id": "2672b0bf-4208-4769-8ffc-c726f659836f",
+      "speaker_role": "customer",
+      "start_ms": 8000,
+      "end_ms": 13440,
+      "text": "We're losing around 6 hours every week manually routing these calls.",
+      "sequence_number": 1
+    },
+    {
+      "id": "32345bfc-8778-4855-b32f-faf03f516e7b",
+      "speaker_id": "80553445-90f0-4bb8-95d3-08d9b8d98fa9",
+      "speaker_role": "seller",
+      "start_ms": 16000,
+      "end_ms": 20400,
+      "text": "That is helpful. I will send the SOC2 report by Friday.",
+      "sequence_number": 2
+    },
+    {
+      "id": "bb6189fe-fc54-4829-bfd3-3cf893519cd1",
+      "speaker_id": "2672b0bf-4208-4769-8ffc-c726f659836f",
+      "speaker_role": "customer",
+      "start_ms": 24000,
+      "end_ms": 30080,
+      "text": "If you can support Salesforce, I think we're good to move forward next week.",
+      "sequence_number": 3
+    }
+  ]
+}

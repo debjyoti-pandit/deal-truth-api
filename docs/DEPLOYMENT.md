@@ -51,6 +51,7 @@ Copy `.env.production.example`. You must fill:
 | Var | What |
 |---|---|
 | `PUBLIC_API_BASE_URL` | `https://` API host (Caddy) |
+| `PUBLIC_WEB_BASE_URL` | `https://` web app host (Pages) — used in share links |
 | `AUTH_MODE=api_key` + `API_KEYS` | do not leave `none` on a public host |
 | `CORS_ORIGINS` | `https://<pages-host>` |
 | `DATABASE_URL` / `DATABASE_SYNC_URL` | Supabase URI |

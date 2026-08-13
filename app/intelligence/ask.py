@@ -69,17 +69,10 @@ def retrieve(
     return scored[:top_k]
 
 
-def ask(
-    question: str,
-    chunks: Sequence[tuple[dict[str, object], Sequence[float]]],
-    ml: MLInferenceClient,
-    *,
-    top_k: int = 5,
-    generate: bool = False,
-) -> dict[str, object]:
-    qvec = ml.embed([question])[0]
-    ranked = retrieve(qvec, chunks, top_k=top_k)
-    moments = []
+def _build_moments(
+    ranked: Sequence[tuple[dict[str, object], float]],
+) -> tuple[list[dict[str, object]], list[str]]:
+    moments: list[dict[str, object]] = []
     segment_ids: list[str] = []
     for chunk, score in ranked:
         ids = chunk.get("segment_ids") or []
@@ -93,9 +86,56 @@ def ask(
                 "score": round(score, 4),
                 "start_ms": chunk.get("start_ms"),
                 "end_ms": chunk.get("end_ms"),
-                "segment_ids": [str(s) for s in ids] if isinstance(ids, list) else [],
+                "segment_ids": [str(s) for s in ids],
             }
         )
+    return moments, segment_ids
+
+
+def _tokens(text: str) -> set[str]:
+    return {t for t in re.findall(r"[a-z0-9']+", text.lower()) if len(t) > 2}
+
+
+def ask_lexical(
+    question: str,
+    chunks: Sequence[tuple[dict[str, object], Sequence[float]]],
+    *,
+    top_k: int = 5,
+) -> dict[str, object]:
+    """Token-overlap retrieval used when the ML service is unavailable. No generation."""
+    want = _tokens(question)
+    scored: list[tuple[dict[str, object], float]] = []
+    for chunk, _vec in chunks:
+        words = _tokens(str(chunk.get("text") or ""))
+        score = len(want & words) / len(want) if want else 0.0
+        scored.append((chunk, score))
+    scored.sort(key=lambda x: x[1], reverse=True)
+    ranked = [(chunk, score) for chunk, score in scored[:top_k] if score > 0]
+    moments, segment_ids = _build_moments(ranked)
+    if moments:
+        lines = [f"{i + 1}. {m['text']} ({m.get('start_ms')} ms)" for i, m in enumerate(moments)]
+        answer = "I found relevant moments (lexical match; ML service unavailable):\n" + "\n".join(lines)
+    else:
+        answer = "No matching moments were found (ML service unavailable; lexical match only)."
+    return {
+        "answer": answer,
+        "mode": "retrieval_lexical_fallback",
+        "moments": moments,
+        "evidence_segment_ids": segment_ids,
+    }
+
+
+def ask(
+    question: str,
+    chunks: Sequence[tuple[dict[str, object], Sequence[float]]],
+    ml: MLInferenceClient,
+    *,
+    top_k: int = 5,
+    generate: bool = False,
+) -> dict[str, object]:
+    qvec = ml.embed([question])[0]
+    ranked = retrieve(qvec, chunks, top_k=top_k)
+    moments, segment_ids = _build_moments(ranked)
     answer = None
     mode = "retrieval"
     if generate and ranked:

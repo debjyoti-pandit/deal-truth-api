@@ -20,8 +20,8 @@ from app.core.enums import (
     EventState,
     TrackedTermType,
 )
-from app.core.errors import ConflictError, NotFoundError
-from app.models.call import Call
+from app.core.errors import ConflictError, InvalidAudio, NotFoundError
+from app.models.call import AudioAsset, Call
 from app.models.events import ProcessingEvent
 from app.models.terms import TrackedTerm
 from app.models.transcript import Speaker, TranscriptSegment
@@ -53,6 +53,7 @@ def _summary(call: Call) -> CallSummary:
         public_call_id=call.public_call_id,
         title=call.title,
         customer_name=call.customer_name,
+        rep_name=call.rep_name,
         status=call.status,
         terminal_outcome=call.terminal_outcome,
         duration_ms=call.duration_ms,
@@ -64,7 +65,6 @@ def _summary(call: Call) -> CallSummary:
 def _detail(call: Call) -> CallDetail:
     return CallDetail(
         **_summary(call).model_dump(),
-        rep_name=call.rep_name,
         call_direction=call.call_direction,
         source_type=call.source_type,
         recording_mode=call.recording_mode,
@@ -113,6 +113,54 @@ def list_calls(session: Session = Depends(get_sync_session)) -> list[CallSummary
     return [_summary(c) for c in rows]
 
 
+# Registered before /calls/{call_id} so the literal path is not parsed as a UUID.
+@router.get("/calls/overview")
+def calls_overview(session: Session = Depends(get_sync_session)) -> dict[str, object]:
+    """Dashboard aggregates: status counts, latest-run insight counts, recent calls."""
+    from sqlalchemy import func
+
+    from app.models.analysis import AnalysisRun, Insight
+
+    rows = session.scalars(select(Call).order_by(Call.created_at.desc())).all()
+    by_status: dict[str, int] = {}
+    total_duration_ms = 0
+    for call in rows:
+        by_status[call.status.value] = by_status.get(call.status.value, 0) + 1
+        total_duration_ms += call.duration_ms or 0
+
+    terminal = {s.value for s in TERMINAL_CALL_STATUSES}
+    processing = sum(count for status, count in by_status.items() if status not in terminal)
+
+    latest = (
+        select(AnalysisRun.call_id, func.max(AnalysisRun.version).label("version"))
+        .group_by(AnalysisRun.call_id)
+        .subquery()
+    )
+    latest_run_ids = select(AnalysisRun.id).join(
+        latest,
+        (AnalysisRun.call_id == latest.c.call_id) & (AnalysisRun.version == latest.c.version),
+    )
+    insight_counts = {
+        insight_type.value: count
+        for insight_type, count in session.execute(
+            select(Insight.type, func.count()).where(Insight.analysis_run_id.in_(latest_run_ids)).group_by(Insight.type)
+        ).all()
+    }
+
+    return {
+        "total_calls": len(rows),
+        "by_status": by_status,
+        "shipped": by_status.get(CallStatus.SHIPPED.value, 0),
+        "partial": by_status.get(CallStatus.PARTIAL.value, 0),
+        "failed": by_status.get(CallStatus.FAILED.value, 0),
+        "cancelled": by_status.get(CallStatus.CANCELLED.value, 0),
+        "processing": processing,
+        "total_duration_ms": total_duration_ms,
+        "insight_counts": insight_counts,
+        "recent_calls": [_summary(c).model_dump(mode="json") for c in rows[:10]],
+    }
+
+
 @router.get("/calls/{call_id}")
 def get_call(call_id: UUID, session: Session = Depends(get_sync_session)) -> CallDetail:
     return _detail(_get_call(session, call_id))
@@ -133,8 +181,14 @@ def process_call(
     call = _get_call(session, call_id)
     if CallStatus(call.status) == CallStatus.CANCELLED:
         raise ConflictError("Call is cancelled")
+    # GAP-BE-010: never queue a call without audio; that is user input, not infrastructure.
+    has_audio = session.scalar(select(AudioAsset.id).where(AudioAsset.call_id == call.id).limit(1)) is not None
+    if not has_audio:
+        raise InvalidAudio("Upload audio or provide a source URL before processing")
     if CallStatus(call.status) == CallStatus.CREATED:
         transition(session, call, CallStatus.QUEUED)
+    if CallStatus(call.status) == CallStatus.QUEUED:
+        log_event(session, call, stage="queued", state=EventState.SUCCEEDED)
     session.commit()
     container.enqueue_process(call.id)
     return _detail(call)
@@ -179,6 +233,33 @@ def cancel_call(call_id: UUID, session: Session = Depends(get_sync_session)) -> 
     return _detail(call)
 
 
+# GAP-BE-007: the API expresses event stages in CallStatus vocabulary with lowercase states.
+_STAGE_TO_STATUS = {
+    "created": "CREATED",
+    "upload": "UPLOADING",
+    "source_url": "UPLOADING",
+    "queued": "QUEUED",
+    "transcribe": "TRANSCRIBING",
+    "recap": "WAITING_FOR_RECAP",
+    "analyze": "ANALYZING",
+    "validate": "VALIDATING",
+    "index": "INDEXING",
+    "report": "BUILDING_REPORT",
+    "cancel": "CANCELLED",
+}
+_CALL_STATUS_VALUES = frozenset(s.value for s in CallStatus)
+
+
+def event_stage(stage: str, message: str | None = None) -> str:
+    if stage == "complete" and message in _CALL_STATUS_VALUES:
+        return message
+    return _STAGE_TO_STATUS.get(stage, stage.upper())
+
+
+def event_state(state: str) -> str:
+    return state.lower()
+
+
 @router.get("/calls/{call_id}/events")
 def list_events(call_id: UUID, session: Session = Depends(get_sync_session)) -> list[EventOut]:
     _get_call(session, call_id)
@@ -188,8 +269,8 @@ def list_events(call_id: UUID, session: Session = Depends(get_sync_session)) -> 
     return [
         EventOut(
             id=r.id,
-            stage=r.stage,
-            state=r.state.value,
+            stage=event_stage(r.stage, r.message),
+            state=event_state(r.state.value),
             attempt=r.attempt,
             error_code=r.error_code,
             message=r.message,
@@ -230,10 +311,13 @@ async def stream_events(
                     after = row.created_at
                     payload = {
                         "id": str(row.id),
-                        "stage": row.stage,
-                        "state": row.state.value,
+                        "call_id": str(call_id),
+                        "status": call.status.value,
+                        "stage": event_stage(row.stage, row.message),
+                        "state": event_state(row.state.value),
                         "error_code": row.error_code,
                         "message": row.message,
+                        "created_at": row.created_at.isoformat(),
                     }
                     eid = row.created_at.isoformat()
                     yield f"id: {eid}\nevent: processing\ndata: {json.dumps(payload)}\n\n"

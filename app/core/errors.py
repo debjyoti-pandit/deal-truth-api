@@ -274,6 +274,15 @@ class ConflictError(NamedError):
     failure_kind = FailureKind.USER_INPUT
 
 
+class NotReadyError(NamedError):
+    """Report/derived artifacts are not available until the call is SHIPPED or PARTIAL."""
+
+    code = "NOT_READY"
+    http_status = 409
+    retryable = True
+    failure_kind = FailureKind.USER_INPUT
+
+
 class UnauthorizedError(NamedError):
     code = "UNAUTHORIZED"
     http_status = 401

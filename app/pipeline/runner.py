@@ -141,9 +141,7 @@ def run_pipeline(deps: PipelineDeps, call_id: UUID) -> CallStatus:
             raise CallCancelled("Call is cancelled")
         if kind == FailureKind.TRANSCRIPTION:
             transition(session, call, CallStatus.FAILED, failure_kind=kind)
-        elif kind == FailureKind.RECAP or (
-            kind == FailureKind.ML_INFERENCE and call.transcript_segments
-        ):
+        elif kind == FailureKind.RECAP or (kind == FailureKind.ML_INFERENCE and call.transcript_segments):
             # Recap/ML failure must not delete a successful transcript.
             if call.transcript_segments:
                 warnings.append(exc.code)
@@ -359,9 +357,7 @@ def _analyze(
     session.commit()
 
     texts = [v.text for v in views]
-    classifications = (
-        _ml_or_warn(deps, call, warnings, "classify", lambda: deps.ml.classify(texts)) if texts else []
-    )
+    classifications = _ml_or_warn(deps, call, warnings, "classify", lambda: deps.ml.classify(texts)) if texts else []
     customer_idx = [i for i, v in enumerate(views) if v.speaker_role == SpeakerRole.CUSTOMER]
     emotions = (
         _ml_or_warn(
@@ -452,6 +448,10 @@ def _analyze(
     persist_chunks(session, call, chunks, embeddings)
 
     report = build_report(call, recap, metrics, shipped, warnings)
+    # The stored report carries the terminal outcome, not the in-flight INDEXING status.
+    outcome = CallStatus.PARTIAL if warnings else CallStatus.SHIPPED
+    report["status"] = outcome.value
+    report["terminal_outcome"] = outcome.value
     keys = blob_keys(call.id, "audio.bin")
     store_json(deps.blob, deps.settings, call.id, keys.report_json, report)
     store_text(deps.blob, deps.settings, keys.report_md, render_markdown(report), "text/markdown")

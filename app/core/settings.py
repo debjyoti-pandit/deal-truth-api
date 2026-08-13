@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
     public_api_base_url: str = "http://localhost:8000"
+    # Web app origin used for share links (e.g. http://localhost:5173). Empty -> relative /shared/{token}.
+    public_web_base_url: str = ""
 
     ngrok_enabled: bool = True
     ngrok_api_url: str = "http://127.0.0.1:4040"

@@ -38,6 +38,10 @@ def test_openapi_schema_valid(client: TestClient) -> None:
         "/api/v1/shared/{token}",
         "/api/v1/calls/{call_id}/export/json",
         "/api/v1/calls/{call_id}/export/markdown",
+        "/api/v1/calls/{call_id}/audio-url",
+        "/api/v1/search",
+        "/api/v1/recommendations",
+        "/api/v1/calls/overview",
         "/api/v1/webhooks/pyai/transcription",
     ]
     for path in required:
@@ -50,14 +54,30 @@ def test_create_call_and_share_hash(client: TestClient) -> None:
     call_id = created.json()["id"]
     listed = client.get("/api/v1/calls")
     assert listed.status_code == 200
+    assert "rep_name" in listed.json()[0]
     got = client.get(f"/api/v1/calls/{call_id}")
     assert got.status_code == 200
     share = client.post(f"/api/v1/calls/{call_id}/share", json={})
     assert share.status_code == 200
     token = share.json()["token"]
     assert "token_hash" not in share.json()
+    assert share.json()["url"] == f"/shared/{token}"
+
+    # An unprocessed call must yield a named 409, never a 500 (GAP-BE-002).
+    shared = client.get(f"/api/v1/shared/{token}")
+    assert shared.status_code == 409
+    assert shared.json()["error"]["code"] == "NOT_READY"
+
+    upload = client.post(
+        f"/api/v1/calls/{call_id}/audio",
+        files={"file": ("call.wav", b"RIFF....WAVEfmt extra audio", "audio/wav")},
+    )
+    assert upload.status_code == 200
+    assert client.post(f"/api/v1/calls/{call_id}/process").status_code == 200
     shared = client.get(f"/api/v1/shared/{token}")
     assert shared.status_code == 200
+    body = shared.json()
+    assert "report" in body and "transcript" in body
 
 
 def test_upload_audio_and_process(client: TestClient) -> None:

@@ -13,12 +13,12 @@ from sqlalchemy.orm import Session
 from app.core.enums import AnalysisRunStatus, SpeakerRole
 from app.core.errors import MLResponseInvalid
 from app.core.settings import Settings
-from app.models.types import EmbeddingVector
 from app.intelligence.domain import SegmentView, ValidatedInsight
 from app.models.analysis import AnalysisRun, CallMetrics, Insight, RecapRecord
 from app.models.call import Call
 from app.models.evidence import EvidenceLink
 from app.models.transcript import Speaker, TranscriptChunk, TranscriptSegment
+from app.models.types import EmbeddingVector
 from app.providers.normalized import NormalizedRecap, NormalizedTranscript
 from app.storage.base import BlobStore
 

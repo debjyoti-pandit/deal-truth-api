@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
@@ -13,10 +14,11 @@ from app.api.deps import AppContainer, get_container, get_sync_session, require_
 from app.api.v1.calls import _detail, _get_call
 from app.core.enums import CallStatus, EventState, SourceType
 from app.core.errors import BlobNotFound, InvalidAudio
+from app.core.public_url import resolve_public_api_base_url
 from app.core.security import build_signed_audio_query, verify_signed_audio
 from app.models.call import AudioAsset
 from app.pipeline.state import log_event, transition
-from app.schemas import CallDetail, SourceURLRequest
+from app.schemas import AudioURLOut, CallDetail, SourceURLRequest
 from app.storage.keys import blob_keys
 from app.storage.ssrf import fetch_https_source
 from app.storage.validate import SizeLimitReader, safe_filename, validate_audio_meta
@@ -133,6 +135,26 @@ def get_audio(
     if asset is None:
         raise BlobNotFound("Audio asset not found")
     return _stream_asset(asset, request, container)
+
+
+@router.get("/calls/{call_id}/audio-url", dependencies=[Depends(require_auth)])
+def get_audio_url(
+    call_id: UUID,
+    session: Session = Depends(get_sync_session),
+    container: AppContainer = Depends(get_container),
+) -> AudioURLOut:
+    """GAP-BE-008: mint a short-lived signed URL usable as <audio src> (no custom headers)."""
+    call = _get_call(session, call_id)
+    asset = session.query(AudioAsset).filter(AudioAsset.call_id == call.id).first()
+    if asset is None:
+        raise BlobNotFound("Audio asset not found")
+    expires = int(time.time()) + container.settings.signed_url_ttl_seconds
+    query = build_signed_audio_query(asset.id, expires, container.settings.hmac_secret)
+    base = resolve_public_api_base_url(container.settings)
+    return AudioURLOut(
+        url=f"{base.rstrip('/')}/api/v1/public/audio/{asset.id}?{query}",
+        expires_at=datetime.fromtimestamp(expires, tz=UTC),
+    )
 
 
 @router.get("/public/audio/{asset_id}")

@@ -1,18 +1,29 @@
-"""Report, insights, metrics, ask, follow-up, exports."""
+"""Report, insights, metrics, ask, search, follow-up, exports."""
 
 from __future__ import annotations
 
 import json
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse, PlainTextResponse
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import AppContainer, get_container, get_sync_session, require_auth
-from app.core.errors import NotFoundError
+from app.core.enums import CallStatus
+from app.core.errors import (
+    BlobDownloadFailed,
+    MLAuthFailed,
+    MLInferenceFailed,
+    MLModelNotReady,
+    MLServiceUnavailable,
+    NamedError,
+    NotFoundError,
+    NotReadyError,
+)
 from app.intelligence.ask import ask as ask_call
+from app.intelligence.ask import ask_lexical
 from app.intelligence.email import build_follow_up, polish_or_fallback
 from app.models.analysis import AnalysisRun, CallMetrics, Insight
 from app.models.call import Call
@@ -22,6 +33,17 @@ from app.schemas import AskRequest
 from app.storage.keys import blob_keys
 
 router = APIRouter(prefix="/api/v1", tags=["report"], dependencies=[Depends(require_auth)])
+
+REPORT_READY_STATUSES = frozenset({CallStatus.SHIPPED, CallStatus.PARTIAL})
+
+
+def require_report_ready(call: Call) -> None:
+    """GAP-BE-001/002/003: a not-yet-built report is a named 409, never a 500."""
+    if CallStatus(call.status) not in REPORT_READY_STATUSES:
+        raise NotReadyError(
+            "Report is not ready; the call has not reached SHIPPED or PARTIAL",
+            details={"status": call.status.value},
+        )
 
 
 def _latest_run(session: Session, call_id: UUID) -> AnalysisRun | None:
@@ -39,10 +61,16 @@ def get_report(
     call = session.get(Call, call_id)
     if call is None:
         raise NotFoundError("Call not found")
+    require_report_ready(call)
     keys = blob_keys(call.id, "audio.bin")
-    if container.blob.exists(container.settings.s3_bucket_results, keys.report_json):
-        raw = container.blob.get_bytes(container.settings.s3_bucket_results, keys.report_json)
-        return json.loads(raw.decode("utf-8"))
+    try:
+        if container.blob.exists(container.settings.s3_bucket_results, keys.report_json):
+            raw = container.blob.get_bytes(container.settings.s3_bucket_results, keys.report_json)
+            return json.loads(raw.decode("utf-8"))
+    except NamedError:
+        raise
+    except Exception as exc:
+        raise BlobDownloadFailed("Report artifact could not be read") from exc
     return {
         "call_id": str(call.id),
         "public_call_id": call.public_call_id,
@@ -127,7 +155,202 @@ def ask_endpoint(
                 chunk.embedding or [],
             )
         )
-    return ask_call(body.question, packed, container.ml, top_k=body.top_k, generate=body.generate)
+    # GAP-BE-012: an unindexed call is an empty retrieval result, not a 503.
+    if not packed:
+        return {
+            "answer": "This call is not indexed yet, so no moments could be retrieved.",
+            "mode": "no_index",
+            "moments": [],
+            "evidence_segment_ids": [],
+        }
+    try:
+        return ask_call(
+            body.question,
+            packed,
+            container.ml,
+            top_k=body.top_k,
+            generate=body.generate,
+        )
+    except (MLServiceUnavailable, MLModelNotReady, MLAuthFailed, MLInferenceFailed):
+        # ML outage degrades to lexical retrieval; it is never presented as a deal judgment.
+        return ask_lexical(body.question, packed, top_k=body.top_k)
+
+
+@router.get("/recommendations")
+def recommendations(session: Session = Depends(get_sync_session)) -> dict[str, object]:
+    """GAP-BE-005: suggested explorations derived from latest-run insights on finished calls."""
+    latest = (
+        select(AnalysisRun.call_id, func.max(AnalysisRun.version).label("version"))
+        .group_by(AnalysisRun.call_id)
+        .subquery()
+    )
+    latest_run_ids = select(AnalysisRun.id).join(
+        latest,
+        (AnalysisRun.call_id == latest.c.call_id) & (AnalysisRun.version == latest.c.version),
+    )
+    rows = session.execute(
+        select(Insight, AnalysisRun.call_id)
+        .join(AnalysisRun, Insight.analysis_run_id == AnalysisRun.id)
+        .join(Call, AnalysisRun.call_id == Call.id)
+        .where(
+            Insight.analysis_run_id.in_(latest_run_ids),
+            Call.status.in_([CallStatus.SHIPPED, CallStatus.PARTIAL]),
+        )
+    ).all()
+
+    def _bucket(predicate) -> tuple[int, list[str]]:
+        call_ids: list[str] = []
+        count = 0
+        for insight, call_id in rows:
+            if predicate(insight):
+                count += 1
+                if str(call_id) not in call_ids:
+                    call_ids.append(str(call_id))
+        return count, call_ids
+
+    def _is_pricing_objection(insight: Insight) -> bool:
+        if insight.type.value != "OBJECTION":
+            return False
+        kind = str((insight.payload or {}).get("kind") or "").lower()
+        text = f"{insight.title} {insight.summary}".lower()
+        return "pricing" in kind or "pricing" in text or "price" in text
+
+    candidates = [
+        (
+            "pricing-objections",
+            "objection",
+            "Pricing objections",
+            "Calls where the customer pushed back on price.",
+            "pricing",
+            _is_pricing_objection,
+        ),
+        (
+            "objections",
+            "objection",
+            "Open objections",
+            "Customer objections raised on recent calls.",
+            "objection",
+            lambda i: i.type.value == "OBJECTION",
+        ),
+        (
+            "deal-risks",
+            "deal_risk",
+            "Deal risks",
+            "Deal killers and unresolved risks flagged with evidence.",
+            "risk",
+            lambda i: i.type.value == "DEAL_RISK",
+        ),
+        (
+            "competitor-mentions",
+            "competitor",
+            "Competitor mentions",
+            "Calls where a competitor came up.",
+            "competitor",
+            lambda i: i.type.value == "COMPETITOR",
+        ),
+        (
+            "commitments",
+            "commitment",
+            "Commitments made",
+            "Promises captured in the commitment ledger.",
+            "commitment",
+            lambda i: i.type.value == "COMMITMENT",
+        ),
+    ]
+    items: list[dict[str, object]] = []
+    for item_id, kind, title, description, query, predicate in candidates:
+        count, call_ids = _bucket(predicate)
+        if count > 0:
+            items.append(
+                {
+                    "id": item_id,
+                    "kind": kind,
+                    "title": title,
+                    "description": description,
+                    "count": count,
+                    "query": query,
+                    "call_ids": call_ids,
+                }
+            )
+    return {"available": True, "items": items}
+
+
+@router.get("/search")
+def search(
+    q: str = Query(min_length=1, max_length=200),
+    limit: int = Query(default=10, ge=1, le=50),
+    session: Session = Depends(get_sync_session),
+) -> dict[str, object]:
+    """GAP-BE-004: cross-call lexical search over insights, transcript segments, and calls."""
+    like = f"%{q.lower()}%"
+
+    insight_rows = session.execute(
+        select(Insight, AnalysisRun.call_id)
+        .join(AnalysisRun, Insight.analysis_run_id == AnalysisRun.id)
+        .where(
+            or_(
+                func.lower(Insight.title).like(like),
+                func.lower(Insight.summary).like(like),
+            )
+        )
+        .order_by(Insight.confidence.desc())
+        .limit(limit)
+    ).all()
+    insights = [
+        {
+            "id": str(insight.id),
+            "call_id": str(call_id),
+            "type": insight.type.value,
+            "title": insight.title,
+            "summary": insight.summary,
+            "evidence_status": insight.evidence_status.value,
+        }
+        for insight, call_id in insight_rows
+    ]
+
+    segment_rows = session.scalars(
+        select(TranscriptSegment)
+        .where(func.lower(TranscriptSegment.text).like(like))
+        .order_by(TranscriptSegment.start_ms.asc())
+        .limit(limit)
+    ).all()
+    segments = [
+        {
+            "id": str(seg.id),
+            "call_id": str(seg.call_id),
+            "text": seg.text,
+            "start_ms": seg.start_ms,
+            "end_ms": seg.end_ms,
+        }
+        for seg in segment_rows
+    ]
+
+    call_rows = session.scalars(
+        select(Call)
+        .where(
+            or_(
+                func.lower(func.coalesce(Call.title, "")).like(like),
+                func.lower(func.coalesce(Call.customer_name, "")).like(like),
+            )
+        )
+        .order_by(Call.created_at.desc())
+        .limit(limit)
+    ).all()
+    calls = [
+        {
+            "id": str(c.id),
+            "title": c.title,
+            "customer_name": c.customer_name,
+            "status": c.status.value,
+        }
+        for c in call_rows
+    ]
+
+    return {
+        "query": q,
+        "groups": {"insights": insights, "segments": segments, "calls": calls},
+        "total": len(insights) + len(segments) + len(calls),
+    }
 
 
 @router.post("/calls/{call_id}/follow-up")
@@ -197,8 +420,14 @@ def export_markdown(
     call = session.get(Call, call_id)
     if call is None:
         raise NotFoundError("Call not found")
+    require_report_ready(call)
     keys = blob_keys(call.id, "audio.bin")
-    if container.blob.exists(container.settings.s3_bucket_results, keys.report_md):
-        text = container.blob.get_bytes(container.settings.s3_bucket_results, keys.report_md).decode("utf-8")
-        return PlainTextResponse(text, media_type="text/markdown")
+    try:
+        if container.blob.exists(container.settings.s3_bucket_results, keys.report_md):
+            text = container.blob.get_bytes(container.settings.s3_bucket_results, keys.report_md).decode("utf-8")
+            return PlainTextResponse(text, media_type="text/markdown")
+    except NamedError:
+        raise
+    except Exception as exc:
+        raise BlobDownloadFailed("Report artifact could not be read") from exc
     return PlainTextResponse("# Report not ready\n", media_type="text/markdown")

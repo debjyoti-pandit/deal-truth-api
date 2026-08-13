@@ -33,6 +33,7 @@ class CallSummary(BaseModel):
     public_call_id: str
     title: str | None
     customer_name: str | None
+    rep_name: str | None = None
     status: CallStatus
     terminal_outcome: TerminalOutcome | None
     duration_ms: int | None
@@ -41,7 +42,6 @@ class CallSummary(BaseModel):
 
 
 class CallDetail(CallSummary):
-    rep_name: str | None
     call_direction: CallDirection
     source_type: SourceType | None
     recording_mode: RecordingMode
@@ -103,6 +103,11 @@ class ShareOut(BaseModel):
     token: str
     expires_at: datetime
     url: str
+
+
+class AudioURLOut(BaseModel):
+    url: str
+    expires_at: datetime
 
 
 class EventOut(BaseModel):

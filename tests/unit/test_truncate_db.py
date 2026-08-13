@@ -4,6 +4,7 @@ from app.core.enums import CallDirection, CallStatus, RecordingMode
 from app.models.call import Call
 from scripts.truncate_db import app_table_names, truncate_all
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 
@@ -28,6 +29,7 @@ def test_truncate_all_sqlite(session: Session) -> None:
     count = session.execute(text("SELECT COUNT(*) FROM calls")).scalar_one()
     assert count == 1
     engine = session.get_bind()
+    assert isinstance(engine, Engine)
     truncated = truncate_all(engine)
     assert "calls" in truncated
     leftover = session.execute(text("SELECT COUNT(*) FROM calls")).scalar_one()

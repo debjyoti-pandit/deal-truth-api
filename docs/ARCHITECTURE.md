@@ -121,10 +121,10 @@ is *not* required for most features.
 |---|---|
 | STT + diarization + timestamps | PyAI Hear |
 | Call summary / recap | PyAI Recap (pack `sales_outbound`) |
-| Emotions | `SamLowe/roberta-base-go_emotions` (via deal-truth-ml) |
-| Sales semantics (zero-shot) | `MoritzLaurer/ModernBERT-base-zeroshot-v2.0`, INT8 ONNX (via deal-truth-ml) |
-| Embeddings | `@cf/qwen/qwen3-embedding-0.6b` → 1024-dim → pgvector (via deal-truth-ml) |
-| Optional generation (polish, Ask synthesis) | `google/flan-t5-small` (swappable to base, via deal-truth-ml) |
+| Emotions (sales-emotion taxonomy, GoEmotions-style axes) | `@cf/qwen/qwen3-30b-a3b-fp8` fast path (via deal-truth-ml `/emotion`) |
+| Sales semantics (zero-shot labels) | `@cf/qwen/qwen3-30b-a3b-fp8` fast path (via deal-truth-ml `/classify`); slug ids mapped back to display labels by `canonical_sales_label` |
+| Embeddings | `@cf/qwen/qwen3-embedding-0.6b` → **1024-dim** → pgvector `vector(1024)` (migration `0002_embedding_1024`) |
+| Optional generation (polish, Ask synthesis) | Workers AI via deal-truth-ml `/generate` (fast model; quality `@cf/openai/gpt-oss-120b` for `qa_synthesis`) |
 | Talk ratio / monologue / questions / keywords | Deterministic Python |
 | Evidence validation | Deterministic Python |
 | Blob storage | SeaweedFS (S3-compatible API via boto3) |
@@ -201,7 +201,10 @@ flowchart TD
 ```
 
 - The pipeline is **idempotent** end to end (stable logical idempotency keys, Celery
-  `acks_late`, task idempotency).
+  `acks_late`, task idempotency). Processing an already-`SHIPPED` call is a no-op; error
+  paths never overwrite a finished call.
+- The stored report JSON stamps the **terminal outcome** (`SHIPPED`/`PARTIAL`), not the
+  in-flight status.
 - Independent analysis (metrics, emotions, labels, embeddings) fans out **in parallel** after
   transcript persistence.
 - Anything writing final report state is **serialized** through a single finalizer task.
@@ -253,16 +256,30 @@ Env vars: `PYAI_API_KEY`, `PYAI_BASE_URL`, `PYAI_WEBHOOK_SECRET`, `PYAI_RECAP_EN
 
 ### deal-truth-ml (hosted inference service)
 
-Contract assumed (single-file change in `DealTruthMLClient` if the hosted service differs):
+**Confirmed contract** (Cloudflare Worker over Workers AI; backend-compat aliases used by
+`DealTruthMLClient`):
 
 ```text
-POST /classify   -> zero-shot sales labels (ModernBERT)
-POST /emotion    -> GoEmotions labels
-POST /embed      -> 1024-dim embeddings (Qwen3 embedding 0.6b)
-POST /generate   -> optional FLAN-T5 generation
+POST /classify   -> zero-shot sales labels (Qwen3 fast path; slug ids like pain_point)
+POST /emotion    -> sales-emotion + buying-intent + deal-signal label scores
+POST /embed      -> 1024-dim embeddings (@cf/qwen/qwen3-embedding-0.6b)
+POST /generate   -> optional generation ({prompt, max_tokens} -> {text})
 ```
 
-Env vars: `ML_SERVICE_BASE_URL`, `ML_SERVICE_API_KEY`, `ML_GENERATION_ENABLED`.
+Client behavior (`app/ml/__init__.py`):
+
+- Base URL resolution: `ML_SERVICE_BASE_URL` → `https://{ML_NGROK_DOMAIN}` → `http://localhost:8081`.
+- Bearer `ML_SERVICE_API_KEY` (matches the Worker's `INTERNAL_API_TOKEN`); `ngrok-skip-browser-warning`
+  header added automatically for ngrok hosts.
+- 300s read timeout — the Worker chunks classify/emotion batches internally inside one HTTP request.
+- Worker label slugs (`pain_point`) are mapped back to extractor keys (`pain point`) via
+  `canonical_sales_label`.
+- Degradation: pipeline ML failures become warnings → run ends `PARTIAL` (deterministic analysis
+  still ships). `POST .../ask` falls back to lexical retrieval (`retrieval_lexical_fallback`) when
+  the service is down and returns `no_index` (200) when a call has no chunks. ML outage is never
+  presented as a deal judgment.
+
+Env vars: `ML_SERVICE_BASE_URL`, `ML_NGROK_DOMAIN`, `ML_SERVICE_API_KEY`, `ML_GENERATION_ENABLED`.
 
 Key insight from the design discussion — **GoEmotions is not deal sentiment**:
 
@@ -346,19 +363,28 @@ event.
 
 | Group | Endpoints |
 |---|---|
-| Health | `GET /health/live`, `GET /health/ready` |
-| Calls | `POST /api/v1/calls`, `GET /api/v1/calls`, `GET /api/v1/calls/{call_id}`, `DELETE /api/v1/calls/{call_id}` |
-| Audio | `POST .../audio` (upload), `POST .../source-url` (SSRF-safe fetch), `GET .../audio` (Range streaming), `GET /api/v1/public/audio/{asset_id}` (signed) |
-| Processing | `POST .../process`, `POST .../reanalyze`, `POST .../cancel`, `GET .../events`, `GET .../stream` (SSE) |
-| Transcript | `GET .../transcript`, `PATCH .../speakers` (role swap → invalidate customer-only insights → enqueue reanalysis, preserve transcript) |
-| Report | `GET .../report`, `GET .../insights`, `GET .../metrics` |
-| Ask | `POST .../ask` |
+| Health | `GET /health/live`, `GET /health/ready` (readiness includes `workers` — Celery ping count — outside test env) |
+| Calls | `POST /api/v1/calls`, `GET /api/v1/calls` (summaries include `rep_name`), `GET /api/v1/calls/{call_id}`, `DELETE /api/v1/calls/{call_id}` |
+| Dashboard | `GET /api/v1/calls/overview` — status counts, latest-run insight counts, `recent_calls` (registered **before** `/calls/{call_id}` so the literal path wins) |
+| Audio | `POST .../audio` (upload), `POST .../source-url` (SSRF-safe fetch), `GET .../audio` (Range streaming), `GET .../audio-url` (mints `{url, expires_at}` for `<audio src>`), `GET /api/v1/public/audio/{asset_id}` (signed) |
+| Processing | `POST .../process` (**400 `INVALID_AUDIO`** without an audio asset; logs a `QUEUED` event), `POST .../reanalyze`, `POST .../cancel`, `GET .../events`, `GET .../stream` (SSE) |
+| Transcript | `GET .../transcript` (empty 200 before transcription), `PATCH .../speakers` (role swap → invalidate customer-only insights → enqueue reanalysis, preserve transcript) |
+| Report | `GET .../report`, `GET .../insights`, `GET .../metrics` — report/exports return **409 `NOT_READY`** until `SHIPPED`/`PARTIAL` |
+| Ask | `POST .../ask` — `no_index` (200) when unindexed; lexical fallback when ML is down |
+| Search | `GET /api/v1/search?q=` — grouped lexical search over insights, segments, calls |
+| Recommendations | `GET /api/v1/recommendations` — suggested explorations from latest-run insights on finished calls |
 | Follow-up | `POST .../follow-up` |
-| Sharing | `POST .../share`, `DELETE .../share/{share_id}`, `GET /api/v1/shared/{token}` |
+| Sharing | `POST .../share` (URL uses `PUBLIC_WEB_BASE_URL`), `DELETE .../share/{share_id}`, `GET /api/v1/shared/{token}` → `{ report, transcript }` |
 | Export | `GET .../export/json`, `GET .../export/markdown` |
 | Webhooks | `POST /api/v1/webhooks/pyai/transcription` |
+| Reference docs | `GET /api/v1/reference`, `GET /api/v1/reference/{name}` — allowlisted markdown from `docs/` |
 
-SSE supports event IDs, `Last-Event-ID`, reconnect, and a terminal event.
+SSE supports event IDs, `Last-Event-ID`, reconnect, and a terminal event. Because
+`EventSource` cannot send headers, `/stream` also accepts `?api_key=` when
+`AUTH_MODE=api_key` (query auth is scoped to `/stream` only). Event `stage` values use
+CallStatus vocabulary and `state` is lowercase — full wire contract, SSE payload shape,
+and committed sample payloads (`docs/examples/*.shipped.json`) are in
+[frontend-contract.md](frontend-contract.md).
 
 ### Named errors (consistent API error envelope)
 
@@ -367,6 +393,7 @@ SSE supports event IDs, `Last-Event-ID`, reconnect, and a terminal event.
 - **Storage:** `BLOB_UPLOAD_FAILED`, `BLOB_DOWNLOAD_FAILED`, `BLOB_NOT_FOUND`, `INVALID_AUDIO`, `AUDIO_TOO_LARGE`
 - **Analysis:** `SPEAKER_ROLE_UNRESOLVED`, `EVIDENCE_SEGMENT_MISSING`, `EVIDENCE_WRONG_SPEAKER`, `EVIDENCE_UNSUPPORTED`, `ANALYSIS_SCHEMA_INVALID`, `EMBEDDING_FAILED`
 - **Database:** `DATABASE_WRITE_FAILED`, `MIGRATION_REQUIRED`
+- **Request:** `NOT_FOUND`, `CONFLICT`, `NOT_READY` (409, retryable — report/exports/shared before `SHIPPED`/`PARTIAL`), `UNAUTHORIZED`, `FORBIDDEN`, `INVALID_SOURCE_URL`, `SHARE_TOKEN_INVALID`, `SIGNED_URL_INVALID`, `CALL_CANCELLED`
 
 ---
 
@@ -400,13 +427,14 @@ permit), call duration.
 ```text
 BACKEND    Python 3.12, FastAPI, Pydantic v2, pydantic-settings, SQLAlchemy 2, Alembic
 ASYNC      Celery + Valkey (broker + result backend)
-DATA       PostgreSQL + pgvector (asyncpg)
+DATA       PostgreSQL + pgvector (asyncpg), embeddings vector(1024)
 BLOB       SeaweedFS via S3 API (boto3)
 SPEECH     PyAI Hear + Recap (Trace feature-flagged)
-ML         deal-truth-ml hosted service (GoEmotions, ModernBERT zero-shot, BGE-small, FLAN-T5)
+ML         deal-truth-ml Cloudflare Worker (Workers AI: Qwen3 fast, GPT-OSS-120B quality,
+           Qwen3-Embedding-0.6B 1024-dim, BGE rerank)
 HTTP       httpx
 TOOLING    uv, Ruff, MyPy, pytest + pytest-asyncio
-DEPLOY     Docker + docker-compose (postgres, redis, seaweedfs, api, worker)
+DEPLOY     Docker + docker-compose (postgres, redis, seaweedfs, api, worker, ngrok)
 LICENSE    MIT
 ```
 
@@ -457,6 +485,19 @@ committed, README covers startup + live tests.
 
 ## 14. Known Open Items
 
-- Confirm the hosted `deal-truth-ml` endpoint contract (`/classify`, `/emotion`, `/embed`, `/generate`) — isolated to `DealTruthMLClient` if it differs.
+- ~~Confirm the hosted `deal-truth-ml` endpoint contract~~ — **confirmed** (compat aliases
+  `/classify`, `/emotion`, `/embed`, `/generate`; see §5). Any future drift stays isolated to
+  `DealTruthMLClient`.
+- `deal-truth-ml` availability is operational (Cloudflare Workers AI quota / ngrok tunnel);
+  the API degrades to `PARTIAL` + lexical Ask when it is down.
 - PyAI Speak for generating synthetic sample calls (mentioned in original design) is optional and not part of P0; `deal-truth-samples` bucket exists for it.
 - PyAI Trace remains interface-only behind `PYAI_TRACE_ENABLED`.
+
+## 15. Frontend contract
+
+The web UI (`deal-truth-web`) integration contract — NOT_READY semantics, event/SSE wire
+shapes, `audio-url` minting, share URLs (`PUBLIC_WEB_BASE_URL`), search, recommendations,
+dashboard overview, Ask degradation modes — lives in
+[frontend-contract.md](frontend-contract.md), with committed sample payloads under
+[examples/](examples/) (regenerate: `uv run python scripts/generate_report_examples.py`).
+Both are served live at `/api/v1/reference`.

@@ -8,7 +8,7 @@ def test_fill_path_uses_uuid_placeholders() -> None:
 
 
 def test_probes_include_health_and_skip_stream() -> None:
-    schema = {
+    schema: dict = {
         "paths": {
             "/health/live": {"get": {}},
             "/api/v1/calls/{call_id}/stream": {"get": {}},

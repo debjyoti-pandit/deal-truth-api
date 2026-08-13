@@ -30,6 +30,7 @@ def pinned_domain_url(env_path: Path | None = None) -> str | None:
         return None
     return f"https://{host}"
 
+
 _FETCH_ERRORS = (
     urllib.error.URLError,
     TimeoutError,
