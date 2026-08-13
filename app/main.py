@@ -10,10 +10,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.deps import build_container
 from app.api.error_handlers import install_error_handlers
+from app.api.middleware import RequestLoggingMiddleware
 from app.api.v1 import api_router
-from app.core.logging import configure_logging
+from app.core.logging import configure_logging, get_logger
 from app.core.settings import get_settings
 from app.db import configure_engines, create_all_async
+
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -24,7 +27,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.container = build_container(settings)
     if settings.app_env == "test":
         await create_all_async()
+    logger.info("app_started env=%s", settings.app_env)
     yield
+    logger.info("app_stopping env=%s", settings.app_env)
 
 
 def create_app() -> FastAPI:
@@ -35,6 +40,7 @@ def create_app() -> FastAPI:
         description="Evidence-backed sales-call intelligence. NO PROOF IN THE TRANSCRIPT, NO CLAIM IN THE REPORT.",
         lifespan=lifespan,
     )
+    application.add_middleware(RequestLoggingMiddleware)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,

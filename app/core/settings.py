@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     app_name: str = "deal-truth-api"
     app_env: str = "development"
     log_level: str = "INFO"
+    # text (default) or json — one JSON object per line for log aggregators.
+    log_format: str = "text"
     public_api_base_url: str = "http://localhost:8000"
     # Web app origin used for share links (e.g. http://localhost:5173). Empty -> relative /shared/{token}.
     public_web_base_url: str = ""

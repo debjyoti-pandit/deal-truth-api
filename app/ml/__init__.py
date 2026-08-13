@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Protocol, runtime_checkable
 
 import httpx
@@ -16,6 +17,8 @@ from app.core.errors import (
     MLServiceUnavailable,
 )
 from app.core.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 SALES_LABELS: tuple[str, ...] = (
     "pain point",
@@ -171,30 +174,39 @@ class DealTruthMLClient:
         try:
             response = self._client.post(url, json=json_body, headers=self._headers())
         except httpx.HTTPError as exc:
+            logger.warning("ml_unavailable path=%s error=%s", path, type(exc).__name__)
             raise MLServiceUnavailable("ML service is unavailable") from exc
         if response.status_code in {401, 403}:
+            logger.warning("ml_auth_failed path=%s status=%s", path, response.status_code)
             raise MLAuthFailed("ML service authentication failed")
         if response.status_code == 503:
+            logger.warning("ml_not_ready path=%s", path)
             raise MLModelNotReady("ML models are not ready")
         if response.status_code in {408, 429, 500, 502, 504}:
+            logger.warning("ml_transient_error path=%s status=%s", path, response.status_code)
             raise MLInferenceFailed("ML inference failed with a transient error")
         if response.status_code >= 400:
+            logger.warning("ml_error path=%s status=%s", path, response.status_code)
             raise MLInferenceFailed("ML inference failed", details={"status_code": response.status_code})
         try:
             payload = response.json()
         except ValueError as exc:
             raise MLResponseInvalid("ML service returned non-JSON") from exc
+        logger.debug("ml_ok path=%s status=%s", path, response.status_code)
         return payload  # type: ignore[no-any-return]
 
     def classify(self, texts: list[str], labels: list[str] | None = None) -> list[ClassificationResult]:
+        logger.info("ml_classify texts=%s", len(texts))
         payload = self._post("/classify", {"texts": texts, "labels": labels or list(SALES_LABELS)})
         return [_parse_classification(item) for item in _as_items(payload, len(texts))]
 
     def emotion(self, texts: list[str]) -> list[EmotionResult]:
+        logger.info("ml_emotion texts=%s", len(texts))
         payload = self._post("/emotion", {"texts": texts})
         return [_parse_emotion(item) for item in _as_items(payload, len(texts))]
 
     def embed(self, texts: list[str]) -> list[list[float]]:
+        logger.info("ml_embed texts=%s", len(texts))
         payload = self._post("/embed", {"texts": texts})
         items = _as_items(payload, len(texts))
         vectors: list[list[float]] = []

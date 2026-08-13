@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
@@ -16,6 +17,8 @@ from app.core.enums import (
 from app.core.errors import CallCancelled, ConflictError
 from app.models.call import Call
 from app.models.events import ProcessingEvent
+
+logger = logging.getLogger(__name__)
 
 ALLOWED: dict[CallStatus, set[CallStatus]] = {
     CallStatus.CREATED: {CallStatus.UPLOADING, CallStatus.QUEUED, CallStatus.CANCELLED, CallStatus.FAILED},
@@ -47,6 +50,14 @@ def transition(session: Session, call: Call, target: CallStatus, *, failure_kind
         raise ConflictError(f"Cannot transition from {current.value} to {target.value}")
     if target != current and target not in ALLOWED.get(current, set()):
         raise ConflictError(f"Illegal state transition {current.value} -> {target.value}")
+    if target != current:
+        logger.info(
+            "call_transition call_id=%s from=%s to=%s failure_kind=%s",
+            call.id,
+            current.value,
+            target.value,
+            failure_kind.value if failure_kind else None,
+        )
     call.status = target
     if target in TERMINAL_CALL_STATUSES:
         call.terminal_outcome = TerminalOutcome(target.value)

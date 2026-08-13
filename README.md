@@ -12,7 +12,7 @@ Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [all design docs](
 
 Python 3.12 · FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL + pgvector · Celery · Redis · SeaweedFS (S3) · PyAI Hear/Recap · hosted `deal-truth-ml`
 
-Paid LLM providers are not used.
+Paid LLM providers are not used. Logging redacts secrets and long transcripts (`LOG_LEVEL`, `LOG_FORMAT=text|json`).
 
 ## Quick start (~2 minutes)
 
@@ -93,6 +93,15 @@ make flower   # terminal 3 — http://127.0.0.1:5555
 ```
 
 `make worker` does **not** take `--acks-late`. Late acks are set in `app/tasks/celery_app.py` (`task_acks_late=True`). Celery app module for Flower is `app.tasks.celery_app` (not `backend`).
+
+### Git hooks
+
+```bash
+make hooks   # or: make install (uv + npm + husky)
+```
+
+- **pre-commit:** Ruff lint/format on staged Python files  
+- **commit-msg:** Conventional Commits via commitlint (`feat:`, `fix:`, …; emoji at end OK)
 
 ## PyAI sandbox key
 

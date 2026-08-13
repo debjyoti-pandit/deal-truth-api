@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import sys
@@ -34,6 +35,7 @@ _SECRET_KEYS = frozenset(
 _REDACT = "[REDACTED]"
 _BEARER = re.compile(r"(Bearer\s+)[A-Za-z0-9._\-+=/]+", re.IGNORECASE)
 _QUERY_SIG = re.compile(r"(signature=)[^&\s]+", re.IGNORECASE)
+_CONFIGURED = False
 
 
 class RedactingFilter(logging.Filter):
@@ -46,6 +48,25 @@ class RedactingFilter(logging.Filter):
             else:
                 record.args = tuple(_redact_text(str(a)) if isinstance(a, str) else a for a in record.args)
         return True
+
+
+class JsonFormatter(logging.Formatter):
+    """One JSON object per line for container log aggregation."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "ts": self.formatTime(record, datefmt="%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exc_info"] = self.formatException(record.exc_info)
+        for key in ("request_id", "call_id", "task_id", "stage", "status_code", "duration_ms"):
+            value = getattr(record, key, None)
+            if value is not None:
+                payload[key] = value
+        return json.dumps(payload, default=str)
 
 
 def _redact_text(text: str) -> str:
@@ -66,19 +87,41 @@ def redact_value(key: str, value: Any) -> Any:
     return value
 
 
-def configure_logging(settings: Settings) -> None:
+def get_logger(name: str) -> logging.Logger:
+    return logging.getLogger(name)
+
+
+def configure_logging(settings: Settings, *, force: bool = False) -> None:
+    global _CONFIGURED
+    if _CONFIGURED and not force:
+        return
     root = logging.getLogger()
     root.handlers.clear()
     handler = logging.StreamHandler(sys.stdout)
     handler.addFilter(RedactingFilter())
-    formatter = logging.Formatter(
-        "%(asctime)s %(levelname)s %(name)s %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S",
-    )
-    handler.setFormatter(formatter)
+    log_format = (getattr(settings, "log_format", None) or "text").lower()
+    if log_format == "json":
+        handler.setFormatter(JsonFormatter())
+    else:
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s %(levelname)s %(name)s %(message)s",
+                datefmt="%Y-%m-%dT%H:%M:%S",
+            )
+        )
     root.addHandler(handler)
     root.setLevel(settings.log_level.upper())
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("botocore").setLevel(logging.WARNING)
     logging.getLogger("boto3").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("celery").setLevel(logging.INFO)
+    _CONFIGURED = True
+    logging.getLogger(__name__).info(
+        "logging configured app=%s env=%s level=%s format=%s",
+        settings.app_name,
+        settings.app_env,
+        settings.log_level.upper(),
+        log_format,
+    )

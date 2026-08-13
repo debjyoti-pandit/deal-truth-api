@@ -1,9 +1,17 @@
-.PHONY: install lock lint typecheck test test-unit test-live migrate migrate-check api worker flower docker-build compose-up compose-down openapi setup infra up down restart reset-db truncate check smoke
+.PHONY: install lock lint fmt format typecheck test test-unit test-live migrate migrate-check api worker flower docker-build compose-up compose-down openapi setup infra up down restart reset-db truncate check smoke hooks
 
 UV ?= uv
+NPM ?= npm
 
 install:
 	$(UV) sync --extra dev
+	$(NPM) install
+	$(NPM) run prepare
+
+hooks:
+	$(NPM) install
+	$(NPM) run prepare
+	@echo "Husky hooks installed (pre-commit: ruff; commit-msg: commitlint)"
 
 lock:
 	$(UV) lock
@@ -12,7 +20,7 @@ lint:
 	$(UV) run ruff check .
 	$(UV) run ruff format --check .
 
-fmt:
+fmt format:
 	$(UV) run ruff check --fix .
 	$(UV) run ruff format .
 

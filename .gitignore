@@ -46,3 +46,8 @@ alembic/versions/__pycache__/
 
 # Cursor
 .cursor/
+
+# Node (husky / commitlint / lint-staged)
+node_modules/
+.husky/_
+

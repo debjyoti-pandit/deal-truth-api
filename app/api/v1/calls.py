@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator
 from datetime import datetime
 from uuid import UUID, uuid4
@@ -36,6 +37,8 @@ from app.schemas import (
     SpeakerPatch,
     TranscriptOut,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["calls"], dependencies=[Depends(require_auth)])
 
@@ -104,6 +107,7 @@ def create_call(
     for name in body.tracked_keywords:
         session.add(TrackedTerm(call_id=call.id, type=TrackedTermType.KEYWORD, value=name, aliases=[]))
     log_event(session, call, stage="created", state=EventState.SUCCEEDED)
+    logger.info("call_created call_id=%s public_call_id=%s", call.id, call.public_call_id)
     return _detail(call)
 
 
@@ -191,6 +195,7 @@ def process_call(
         log_event(session, call, stage="queued", state=EventState.SUCCEEDED)
     session.commit()
     container.enqueue_process(call.id)
+    logger.info("call_process_enqueued call_id=%s status=%s", call.id, call.status.value)
     return _detail(call)
 
 
@@ -204,6 +209,7 @@ def reanalyze_call(
     status = CallStatus(call.status)
     if status in {CallStatus.QUEUED, CallStatus.TRANSCRIBING, CallStatus.WAITING_FOR_RECAP, CallStatus.ANALYZING}:
         container.enqueue_process(call.id)
+        logger.info("call_reanalyze_enqueue_inflight call_id=%s status=%s", call.id, status.value)
         return _detail(call)
     has_transcript = (
         session.scalar(select(TranscriptSegment.id).where(TranscriptSegment.call_id == call.id).limit(1)) is not None
@@ -212,12 +218,14 @@ def reanalyze_call(
         transition(session, call, CallStatus.QUEUED)
         session.commit()
         container.enqueue_process(call.id)
+        logger.info("call_reanalyze_from_failed call_id=%s", call.id)
         return _detail(call)
     if status not in {CallStatus.SHIPPED, CallStatus.PARTIAL, CallStatus.FAILED}:
         raise ConflictError("Call is not ready to reanalyze")
     transition(session, call, CallStatus.ANALYZING)
     session.commit()
     container.enqueue_process(call.id)
+    logger.info("call_reanalyze_enqueued call_id=%s from=%s", call.id, status.value)
     return _detail(call)
 
 

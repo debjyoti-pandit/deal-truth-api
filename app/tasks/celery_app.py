@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from celery import Celery
+from celery.signals import setup_logging, worker_process_init
 
+from app.core.logging import configure_logging, get_logger
 from app.core.settings import get_settings
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 celery_app = Celery(
     "deal_truth",
@@ -28,3 +31,14 @@ celery_app.conf.update(
         "visibility_timeout": int(settings.pyai_poll_deadline_seconds) + 120,
     },
 )
+
+
+@setup_logging.connect
+def _on_setup_logging(**_kwargs: object) -> None:
+    configure_logging(get_settings(), force=True)
+
+
+@worker_process_init.connect
+def _on_worker_process_init(**_kwargs: object) -> None:
+    configure_logging(get_settings(), force=True)
+    logger.info("celery_worker_process_ready")

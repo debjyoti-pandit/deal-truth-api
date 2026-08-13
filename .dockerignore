@@ -1,3 +1,6 @@
+node_modules
+package-lock.json
+.husky/_
 __pycache__
 .venv
 .pytest_cache

@@ -185,6 +185,7 @@ def test_search_filters_status_and_call_id(client: TestClient) -> None:
     ).json()
     assert created_hits["groups"]["segments"] == []
     assert all(c["status"] == "CREATED" for c in created_hits["groups"]["calls"])
+    assert any(c["id"] == created_only for c in created_hits["groups"]["calls"])
 
 
 def test_search_speaker_role_filter(client: TestClient) -> None:

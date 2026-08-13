@@ -1,0 +1,23 @@
+{
+  "name": "deal-truth-api",
+  "private": true,
+  "description": "Git hooks only — Python app is managed with uv",
+  "scripts": {
+    "prepare": "husky",
+    "lint": "uv run ruff check . && uv run ruff format --check .",
+    "format": "uv run ruff check --fix . && uv run ruff format .",
+    "commitlint": "commitlint --edit"
+  },
+  "lint-staged": {
+    "*.py": [
+      "uv run ruff check --fix",
+      "uv run ruff format"
+    ]
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2"
+  }
+}

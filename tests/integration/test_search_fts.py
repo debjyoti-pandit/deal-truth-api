@@ -6,13 +6,12 @@ import os
 import uuid
 
 import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session
-
 from app.core.enums import CallStatus, SourceType
 from app.intelligence.search import search_calls
 from app.models.call import Call
 from app.models.transcript import TranscriptSegment
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
 
 pytestmark = pytest.mark.integration
 

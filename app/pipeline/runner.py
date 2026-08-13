@@ -90,12 +90,20 @@ def run_pipeline(deps: PipelineDeps, call_id: UUID) -> CallStatus:
     if CallStatus(call.status) == CallStatus.CANCELLED:
         raise CallCancelled("Call is cancelled")
     if CallStatus(call.status) == CallStatus.SHIPPED:
+        logger.info("pipeline_skip call_id=%s reason=already_shipped", call_id)
         return CallStatus.SHIPPED
 
+    logger.info(
+        "pipeline_start call_id=%s public_call_id=%s status=%s",
+        call_id,
+        call.public_call_id,
+        call.status.value if hasattr(call.status, "value") else call.status,
+    )
     warnings: list[str] = []
     try:
         existing = load_segment_views(session, call)
         if existing:
+            logger.info("pipeline_resume call_id=%s segments=%s", call_id, len(existing))
             recap = None
             recap_row = call.recap_record
             if recap_row is not None:
@@ -124,9 +132,17 @@ def run_pipeline(deps: PipelineDeps, call_id: UUID) -> CallStatus:
         transition(session, call, outcome)
         log_event(session, call, stage="complete", state=EventState.SUCCEEDED, message=outcome.value)
         session.commit()
+        logger.info(
+            "pipeline_complete call_id=%s outcome=%s warnings=%s segments=%s",
+            call_id,
+            outcome.value,
+            warnings,
+            len(views),
+        )
         return outcome
     except CallCancelled:
         session.rollback()
+        logger.info("pipeline_cancelled call_id=%s", call_id)
         raise
     except NamedError as exc:
         session.rollback()
@@ -139,6 +155,13 @@ def run_pipeline(deps: PipelineDeps, call_id: UUID) -> CallStatus:
             return CallStatus.SHIPPED
         if current == CallStatus.CANCELLED:
             raise CallCancelled("Call is cancelled")
+        logger.warning(
+            "pipeline_named_error call_id=%s code=%s kind=%s status=%s",
+            call_id,
+            exc.code,
+            kind.value,
+            current.value,
+        )
         if kind == FailureKind.TRANSCRIPTION:
             transition(session, call, CallStatus.FAILED, failure_kind=kind)
         elif kind == FailureKind.RECAP or (kind == FailureKind.ML_INFERENCE and call.transcript_segments):
@@ -172,6 +195,7 @@ def run_pipeline(deps: PipelineDeps, call_id: UUID) -> CallStatus:
                 return CallStatus.SHIPPED
             if current in {CallStatus.PARTIAL, CallStatus.CANCELLED}:
                 raise
+            logger.exception("pipeline_unexpected_error call_id=%s error=%s", call_id, type(exc).__name__)
             transition(session, call, CallStatus.FAILED, failure_kind=FailureKind.INFRASTRUCTURE)
             log_event(
                 session,
@@ -243,6 +267,7 @@ def _transcribe(deps: PipelineDeps, call: Call) -> tuple[object, list[SegmentVie
 
     if call.pyai_job_id:
         job_id = call.pyai_job_id
+        logger.info("pyai_job_resume call_id=%s job_id=%s", call.id, job_id)
     else:
         asset = session.scalars(select(AudioAsset).where(AudioAsset.call_id == call.id)).first()
         audio_url = None
@@ -264,6 +289,12 @@ def _transcribe(deps: PipelineDeps, call: Call) -> tuple[object, list[SegmentVie
         call.pyai_job_id = handle.job_id
         session.commit()
         job_id = handle.job_id
+        logger.info(
+            "pyai_job_submitted call_id=%s job_id=%s webhook=%s",
+            call.id,
+            job_id,
+            bool(webhook),
+        )
 
     transcript = _await_transcript(deps, job_id, webhook_url=webhook)
     keys = blob_keys(call.id, "audio.bin")
@@ -299,6 +330,11 @@ def _recap(deps: PipelineDeps, call: Call, warnings: list[str]) -> NormalizedRec
         recap = deps.recap.poll_until_ready(call.id, call.public_call_id)
         if recap.capability_warning:
             warnings.append(recap.capability_warning)
+            logger.info(
+                "recap_capability_warning call_id=%s warning=%s",
+                call.id,
+                recap.capability_warning,
+            )
         persist_recap(session, call, recap)
         keys = blob_keys(call.id, "audio.bin")
         store_json(deps.blob, deps.settings, call.id, keys.recap, recap.raw)
@@ -331,6 +367,12 @@ def _ml_or_warn[T](
     except NamedError as exc:
         if exc.failure_kind != FailureKind.ML_INFERENCE:
             raise
+        logger.warning(
+            "ml_stage_failed call_id=%s stage=%s code=%s",
+            call.id,
+            stage,
+            exc.code,
+        )
         warnings.append(exc.code)
         log_event(
             deps.session,

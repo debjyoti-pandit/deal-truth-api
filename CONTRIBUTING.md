@@ -29,6 +29,23 @@ make typecheck
 make test-unit
 ```
 
+## Git hooks (Husky)
+
+Requires Node.js 18+. One-time (also runs via `make install`):
+
+```bash
+make hooks
+```
+
+| Hook | What it runs |
+|---|---|
+| `pre-commit` | `lint-staged` → `ruff check --fix` + `ruff format` on staged `*.py` |
+| `commit-msg` | `commitlint` (conventional commits, e.g. `fix: …`, `feat: …`) |
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/). Emoji at the end of the subject is fine.
+
+Bypass only when necessary: `HUSKY=0 git commit …` (do not use for routine work).
+
 Do not run live PyAI tests unless you have a sandbox key and set `RUN_PYAI_LIVE_TESTS=1`.
 
 ## Rules
