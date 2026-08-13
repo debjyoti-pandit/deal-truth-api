@@ -8,7 +8,8 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # Fresh volume: old postgres_data was initialized as OpenGong (role opengong).
+      - postgres_deal_truth:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U deal_truth"]
       interval: 5s
@@ -115,6 +116,6 @@ services:
         condition: service_started
 
 volumes:
-  postgres_data:
+  postgres_deal_truth:
   redis_data:
   seaweed_data:

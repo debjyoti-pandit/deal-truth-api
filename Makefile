@@ -58,6 +58,12 @@ up:
 down:
 	docker compose down --remove-orphans
 
+# Recreate Postgres after credential/name changes (OpenGong → deal_truth).
+reset-db:
+	docker compose stop postgres migrate api worker || true
+	docker compose rm -f postgres migrate || true
+	docker volume rm deal-truth_postgres_deal_truth deal-truth_postgres_data 2>/dev/null || true
+
 api: check
 	$(UV) run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
