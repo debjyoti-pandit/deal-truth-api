@@ -31,7 +31,7 @@ def build_blob_store(settings: Settings):
     if settings.app_env == "test":
         return memory_blob()
     store = SeaweedFSS3BlobStore(settings)
-    store.ensure_buckets()
+    store.ensure_buckets(attempts=20, delay_seconds=0.5)
     return store
 
 

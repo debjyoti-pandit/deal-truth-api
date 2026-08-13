@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from io import BytesIO
 from typing import BinaryIO
 
@@ -13,6 +15,8 @@ from app.core.settings import Settings
 from app.storage.base import BlobObject
 
 _MISSING_BUCKET = frozenset({"NoSuchBucket", "404", "NotFound"})
+_RETRYABLE_CODES = frozenset({"EndpointConnectionError", "ConnectTimeoutError", "ConnectionClosedError"})
+_log = logging.getLogger(__name__)
 
 
 def _error_code(exc: BaseException) -> str:
@@ -44,7 +48,25 @@ class SeaweedFSS3BlobStore:
             settings.s3_bucket_samples,
         )
 
-    def ensure_buckets(self) -> None:
+    def ensure_buckets(self, *, attempts: int = 1, delay_seconds: float = 0.5) -> None:
+        last: BlobUploadFailed | None = None
+        total = max(attempts, 1)
+        for attempt in range(1, total + 1):
+            try:
+                self._ensure_buckets_once()
+                return
+            except BlobUploadFailed as exc:
+                last = exc
+                code = str(exc.details.get("error_code") or "")
+                if code not in _RETRYABLE_CODES or attempt >= total:
+                    raise
+                _log.warning("storage not ready (%s); retry %s/%s", code, attempt, total)
+                if delay_seconds > 0:
+                    time.sleep(delay_seconds)
+        if last is not None:
+            raise last
+
+    def _ensure_buckets_once(self) -> None:
         for bucket in self._buckets:
             try:
                 self._client.head_bucket(Bucket=bucket)

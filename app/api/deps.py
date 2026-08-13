@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from uuid import UUID
@@ -46,10 +45,7 @@ def build_container(settings: Settings | None = None) -> AppContainer:
         blob: BlobStore = memory_blob()
     else:
         blob = SeaweedFSS3BlobStore(settings)
-        try:
-            blob.ensure_buckets()
-        except Exception:
-            logging.getLogger(__name__).exception("storage bucket setup failed; uploads will retry")
+        blob.ensure_buckets(attempts=20, delay_seconds=0.5)
     return AppContainer(
         settings=settings,
         blob=blob,
