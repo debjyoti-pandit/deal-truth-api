@@ -7,8 +7,9 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
+from sqlalchemy.orm import Mapped, deferred, mapped_column, relationship
+from sqlalchemy.schema import FetchedValue
 from sqlalchemy.types import JSON
 
 from app.core.enums import AnalysisRunStatus, EvidenceStatus, InsightType
@@ -64,6 +65,14 @@ class Insight(Base):
     )
     payload: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict, nullable=False)
     created_at: Mapped[datetime] = created_at_col()
+    # Postgres-only generated column (migration 0003). Never written by the ORM.
+    text_search: Mapped[object | None] = deferred(
+        mapped_column(
+            TSVECTOR().with_variant(Text(), "sqlite"),
+            FetchedValue(),
+            nullable=True,
+        )
+    )
 
     analysis_run: Mapped[AnalysisRun] = relationship(back_populates="insights")
     evidence_links: Mapped[list[EvidenceLink]] = relationship(back_populates="insight", cascade="all, delete-orphan")

@@ -73,11 +73,58 @@ or the relative `/shared/{token}` when `PUBLIC_WEB_BASE_URL` is unset.
 
 ## Search (GAP-BE-004)
 
-`GET /search?q=&limit=` (authenticated) → lexical search across insights, transcript segments,
-and calls:
+`GET /search` (authenticated) — lexical search across insights, transcript segments, and calls.
+Full architecture (FTS columns, ranking, lexical vs Ask/pgvector) is in [search.md](search.md).
+
+**Query params:** `q` (required), `limit` (1–50, default 10), optional filters:
+
+| Param | Applies to | Example |
+|---|---|---|
+| `status` | all groups (via `calls`) | `SHIPPED,PARTIAL` |
+| `from` / `to` | all groups (`calls.created_at`) | `2026-01-01` |
+| `call_id` | all groups | UUID |
+| `speaker_role` | segments only | `customer` |
+| `types` | insights only | `OBJECTION,COMPETITOR` |
+
+**Example response:**
 
 ```json
-{ "query": "pricing", "groups": { "insights": [], "segments": [], "calls": [] }, "total": 0 }
+{
+  "query": "pricing",
+  "groups": {
+    "insights": [
+      {
+        "id": "<uuid>",
+        "call_id": "<uuid>",
+        "call_title": "Acme discovery",
+        "type": "OBJECTION",
+        "title": "Price pushback",
+        "summary": "Customer said the plan is almost double.",
+        "evidence_status": "SUPPORTED"
+      }
+    ],
+    "segments": [
+      {
+        "id": "<uuid>",
+        "call_id": "<uuid>",
+        "text": "We currently pay about 400. This would be almost double.",
+        "start_ms": 6000,
+        "end_ms": 10000,
+        "sequence_number": 2,
+        "speaker_role": "customer"
+      }
+    ],
+    "calls": [
+      {
+        "id": "<uuid>",
+        "title": "Acme discovery",
+        "customer_name": "Sarah",
+        "status": "SHIPPED"
+      }
+    ]
+  },
+  "total": 3
+}
 ```
 
 ## Recommendations (GAP-BE-005)

@@ -7,8 +7,9 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
+from sqlalchemy.orm import Mapped, deferred, mapped_column, relationship
+from sqlalchemy.schema import FetchedValue
 from sqlalchemy.types import JSON
 
 from app.core.enums import SpeakerRole
@@ -57,6 +58,14 @@ class TranscriptSegment(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     sequence_number: Mapped[int] = mapped_column(Integer, nullable=False)
     extra: Mapped[dict[str, Any]] = mapped_column("metadata", JSONType, default=dict, nullable=False)
+    # Postgres-only generated column (migration 0003). Never written by the ORM.
+    text_search: Mapped[object | None] = deferred(
+        mapped_column(
+            TSVECTOR().with_variant(Text(), "sqlite"),
+            FetchedValue(),
+            nullable=True,
+        )
+    )
 
     call: Mapped[Call] = relationship(back_populates="transcript_segments")
     speaker: Mapped[Speaker | None] = relationship(back_populates="segments")

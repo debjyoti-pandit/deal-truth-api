@@ -207,6 +207,9 @@ flowchart TD
   in-flight status.
 - Independent analysis (metrics, emotions, labels, embeddings) fans out **in parallel** after
   transcript persistence.
+- Persisted `transcript_segments` (and later `insights`) are **FTS-indexed automatically** via
+  Postgres generated `tsvector` columns (migration `0003_transcript_search`); see
+  [search.md](search.md).
 - Anything writing final report state is **serialized** through a single finalizer task.
 - Recap failure never deletes a successful transcript → the run ends `PARTIAL`, not `FAILED`.
 
@@ -320,9 +323,9 @@ UUID primary keys unless a stable string is required. All tables via Alembic mig
 | `calls` | public_call_id, title, customer_name, rep_name, call_direction, source_type, recording_mode (mono/stereo), status, terminal_outcome, failure_kind, duration_ms, language, timestamps |
 | `audio_assets` | call_id, bucket, object_key, original_filename, content_type, size_bytes, checksum |
 | `speakers` | call_id, provider_speaker_id, role (seller/customer/unknown), display_name, confidence, manually_overridden |
-| `transcript_segments` | call_id, provider_segment_id, speaker_id, start_ms, end_ms, text, sequence_number, metadata JSONB |
+| `transcript_segments` | call_id, provider_segment_id, speaker_id, start_ms, end_ms, text, sequence_number, metadata JSONB; Postgres `text_search` tsvector (generated) + GIN; trigram GIN on `text` |
 | `analysis_runs` | call_id, version, status, model_manifest JSONB, started_at, finished_at |
-| `insights` | analysis_run_id, type, title, summary, severity, confidence, evidence_status, payload JSONB |
+| `insights` | analysis_run_id, type, title, summary, severity, confidence, evidence_status, payload JSONB; Postgres `text_search` tsvector (generated over title+summary) + GIN |
 | `evidence_links` | insight_id, transcript_segment_id, relationship, sort_order |
 | `recap_records` | call_id, provider_status, headline, tldr, summary, raw_record JSONB |
 | `call_metrics` | call_id, talk_ratio JSONB, longest_monologue JSONB, question_rate JSONB, keyword_hits JSONB |
@@ -371,7 +374,7 @@ event.
 | Transcript | `GET .../transcript` (empty 200 before transcription), `PATCH .../speakers` (role swap → invalidate customer-only insights → enqueue reanalysis, preserve transcript) |
 | Report | `GET .../report`, `GET .../insights`, `GET .../metrics` — report/exports return **409 `NOT_READY`** until `SHIPPED`/`PARTIAL` |
 | Ask | `POST .../ask` — `no_index` (200) when unindexed; lexical fallback when ML is down |
-| Search | `GET /api/v1/search?q=` — grouped lexical search over insights, segments, calls |
+| Search | `GET /api/v1/search?q=` — ranked Postgres FTS (`websearch_to_tsquery` + `ts_rank`) with filters `status`, `from`/`to`, `call_id`, `speaker_role`, `types`; SQLite ILIKE in tests. See [search.md](search.md) |
 | Recommendations | `GET /api/v1/recommendations` — suggested explorations from latest-run insights on finished calls |
 | Follow-up | `POST .../follow-up` |
 | Sharing | `POST .../share` (URL uses `PUBLIC_WEB_BASE_URL`), `DELETE .../share/{share_id}`, `GET /api/v1/shared/{token}` → `{ report, transcript }` |

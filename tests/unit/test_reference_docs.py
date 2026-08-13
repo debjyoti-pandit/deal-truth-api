@@ -8,6 +8,7 @@ def test_reference_lists_architecture(client: TestClient) -> None:
     assert "ARCHITECTURE.md" in names
     assert "evidence.md" in names
     assert "providers.md" in names
+    assert "search.md" in names
 
 
 def test_reference_serves_architecture_markdown(client: TestClient) -> None:

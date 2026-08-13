@@ -22,15 +22,11 @@ def upgrade() -> None:
     if bind.dialect.name != "postgresql":
         return
     # Existing 384-dim rows cannot CAST to 1024.
-    op.execute(
-        "ALTER TABLE transcript_chunks ALTER COLUMN embedding TYPE vector(1024) USING NULL"
-    )
+    op.execute("ALTER TABLE transcript_chunks ALTER COLUMN embedding TYPE vector(1024) USING NULL")
 
 
 def downgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name != "postgresql":
         return
-    op.execute(
-        "ALTER TABLE transcript_chunks ALTER COLUMN embedding TYPE vector(384) USING NULL"
-    )
+    op.execute("ALTER TABLE transcript_chunks ALTER COLUMN embedding TYPE vector(384) USING NULL")

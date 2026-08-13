@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, PlainTextResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import AppContainer, get_container, get_sync_session, require_auth
-from app.core.enums import CallStatus
+from app.core.enums import CallStatus, SpeakerRole
 from app.core.errors import (
     BlobDownloadFailed,
     MLAuthFailed,
@@ -25,6 +26,7 @@ from app.core.errors import (
 from app.intelligence.ask import ask as ask_call
 from app.intelligence.ask import ask_lexical
 from app.intelligence.email import build_follow_up, polish_or_fallback
+from app.intelligence.search import search_calls
 from app.models.analysis import AnalysisRun, CallMetrics, Insight
 from app.models.call import Call
 from app.models.evidence import EvidenceLink
@@ -279,78 +281,35 @@ def recommendations(session: Session = Depends(get_sync_session)) -> dict[str, o
 def search(
     q: str = Query(min_length=1, max_length=200),
     limit: int = Query(default=10, ge=1, le=50),
+    status: str | None = Query(
+        default=None,
+        description="Comma-separated call statuses, e.g. SHIPPED,PARTIAL",
+    ),
+    from_date: date | None = Query(default=None, alias="from"),
+    to_date: date | None = Query(default=None, alias="to"),
+    call_id: UUID | None = Query(default=None),
+    speaker_role: SpeakerRole | None = Query(default=None),
+    types: str | None = Query(
+        default=None,
+        description="Comma-separated insight types, e.g. OBJECTION,COMPETITOR",
+    ),
     session: Session = Depends(get_sync_session),
 ) -> dict[str, object]:
-    """GAP-BE-004: cross-call lexical search over insights, transcript segments, and calls."""
-    like = f"%{q.lower()}%"
-
-    insight_rows = session.execute(
-        select(Insight, AnalysisRun.call_id)
-        .join(AnalysisRun, Insight.analysis_run_id == AnalysisRun.id)
-        .where(
-            or_(
-                func.lower(Insight.title).like(like),
-                func.lower(Insight.summary).like(like),
-            )
+    """GAP-BE-004: cross-call lexical search (Postgres FTS + SQLite ILIKE)."""
+    try:
+        return search_calls(
+            session,
+            q=q,
+            limit=limit,
+            status=status,
+            from_date=from_date,
+            to_date=to_date,
+            call_id=call_id,
+            speaker_role=speaker_role,
+            types=types,
         )
-        .order_by(Insight.confidence.desc())
-        .limit(limit)
-    ).all()
-    insights = [
-        {
-            "id": str(insight.id),
-            "call_id": str(call_id),
-            "type": insight.type.value,
-            "title": insight.title,
-            "summary": insight.summary,
-            "evidence_status": insight.evidence_status.value,
-        }
-        for insight, call_id in insight_rows
-    ]
-
-    segment_rows = session.scalars(
-        select(TranscriptSegment)
-        .where(func.lower(TranscriptSegment.text).like(like))
-        .order_by(TranscriptSegment.start_ms.asc())
-        .limit(limit)
-    ).all()
-    segments = [
-        {
-            "id": str(seg.id),
-            "call_id": str(seg.call_id),
-            "text": seg.text,
-            "start_ms": seg.start_ms,
-            "end_ms": seg.end_ms,
-        }
-        for seg in segment_rows
-    ]
-
-    call_rows = session.scalars(
-        select(Call)
-        .where(
-            or_(
-                func.lower(func.coalesce(Call.title, "")).like(like),
-                func.lower(func.coalesce(Call.customer_name, "")).like(like),
-            )
-        )
-        .order_by(Call.created_at.desc())
-        .limit(limit)
-    ).all()
-    calls = [
-        {
-            "id": str(c.id),
-            "title": c.title,
-            "customer_name": c.customer_name,
-            "status": c.status.value,
-        }
-        for c in call_rows
-    ]
-
-    return {
-        "query": q,
-        "groups": {"insights": insights, "segments": segments, "calls": calls},
-        "total": len(insights) + len(segments) + len(calls),
-    }
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/calls/{call_id}/follow-up")

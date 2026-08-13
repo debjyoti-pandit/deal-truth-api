@@ -154,3 +154,87 @@ def test_search_endpoint_groups(client: TestClient) -> None:
     assert body["query"] == "sarah"
     assert set(body["groups"]) == {"insights", "segments", "calls"}
     assert any(c["id"] == call_id for c in body["groups"]["calls"])
+
+
+def test_search_empty_q_is_422(client: TestClient) -> None:
+    response = client.get("/api/v1/search", params={"q": ""})
+    assert response.status_code == 422
+
+
+def test_search_filters_status_and_call_id(client: TestClient) -> None:
+    shipped = _create(client, title="shipped_call")
+    _upload_and_process(client, shipped)
+    created_only = _create(client, title="created_only")
+
+    scoped = client.get(
+        "/api/v1/search",
+        params={"q": "SOC2", "call_id": shipped, "status": "SHIPPED"},
+    )
+    assert scoped.status_code == 200
+    body = scoped.json()
+    assert all(s["call_id"] == shipped for s in body["groups"]["segments"])
+    assert body["groups"]["segments"], "expected SOC2 segment on shipped call"
+    for seg in body["groups"]["segments"]:
+        assert "speaker_role" in seg
+        assert "sequence_number" in seg
+
+    # CREATED call has no transcript; status=CREATED should not return SOC2 segments.
+    created_hits = client.get(
+        "/api/v1/search",
+        params={"q": "SOC2", "status": "CREATED"},
+    ).json()
+    assert created_hits["groups"]["segments"] == []
+    assert all(c["status"] == "CREATED" for c in created_hits["groups"]["calls"])
+
+
+def test_search_speaker_role_filter(client: TestClient) -> None:
+    call_id = _create(client)
+    _upload_and_process(client, call_id)
+    customer = client.get(
+        "/api/v1/search",
+        params={"q": "Salesforce", "speaker_role": "customer", "call_id": call_id},
+    )
+    assert customer.status_code == 200
+    segs = customer.json()["groups"]["segments"]
+    assert segs
+    assert all(s["speaker_role"] == "customer" for s in segs)
+
+    seller = client.get(
+        "/api/v1/search",
+        params={"q": "Salesforce", "speaker_role": "seller", "call_id": call_id},
+    )
+    assert seller.status_code == 200
+    assert seller.json()["groups"]["segments"] == []
+
+
+def test_search_insight_types_and_call_title(client: TestClient) -> None:
+    call_id = _create(client, title="Acme discovery")
+    _upload_and_process(client, call_id)
+    response = client.get(
+        "/api/v1/search",
+        params={"q": "SOC2", "types": "COMMITMENT,OBJECTION", "call_id": call_id},
+    )
+    assert response.status_code == 200
+    insights = response.json()["groups"]["insights"]
+    for item in insights:
+        assert item["type"] in {"COMMITMENT", "OBJECTION"}
+        assert item["call_title"] == "Acme discovery"
+
+
+def test_search_date_range_filter(client: TestClient) -> None:
+    call_id = _create(client)
+    _upload_and_process(client, call_id)
+    future = client.get(
+        "/api/v1/search",
+        params={"q": "Sarah", "from": "2099-01-01", "to": "2099-12-31"},
+    )
+    assert future.status_code == 200
+    assert future.json()["groups"]["calls"] == []
+    assert future.json()["groups"]["segments"] == []
+
+    today = client.get(
+        "/api/v1/search",
+        params={"q": "Sarah", "from": "2020-01-01", "to": "2099-12-31", "call_id": call_id},
+    )
+    assert today.status_code == 200
+    assert any(c["id"] == call_id for c in today.json()["groups"]["calls"])
