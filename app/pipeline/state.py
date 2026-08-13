@@ -32,7 +32,7 @@ ALLOWED: dict[CallStatus, set[CallStatus]] = {
     CallStatus.VALIDATING: {CallStatus.INDEXING, CallStatus.FAILED, CallStatus.CANCELLED},
     CallStatus.INDEXING: {CallStatus.BUILDING_REPORT, CallStatus.FAILED, CallStatus.CANCELLED},
     CallStatus.BUILDING_REPORT: {CallStatus.SHIPPED, CallStatus.PARTIAL, CallStatus.FAILED},
-    CallStatus.SHIPPED: set(),
+    CallStatus.SHIPPED: {CallStatus.ANALYZING},
     CallStatus.PARTIAL: {CallStatus.ANALYZING, CallStatus.QUEUED},
     CallStatus.FAILED: {CallStatus.QUEUED, CallStatus.ANALYZING},
     CallStatus.CANCELLED: set(),

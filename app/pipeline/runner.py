@@ -89,6 +89,8 @@ def run_pipeline(deps: PipelineDeps, call_id: UUID) -> CallStatus:
         raise LookupError(f"call {call_id} not found")
     if CallStatus(call.status) == CallStatus.CANCELLED:
         raise CallCancelled("Call is cancelled")
+    if CallStatus(call.status) == CallStatus.SHIPPED:
+        return CallStatus.SHIPPED
 
     warnings: list[str] = []
     try:
@@ -105,10 +107,8 @@ def run_pipeline(deps: PipelineDeps, call_id: UUID) -> CallStatus:
                     raw=recap_row.raw_record or {},
                 )
             if CallStatus(call.status) in {
-                CallStatus.SHIPPED,
                 CallStatus.PARTIAL,
                 CallStatus.FAILED,
-                CallStatus.CREATED,
             }:
                 transition(session, call, CallStatus.ANALYZING)
                 session.commit()
@@ -134,6 +134,11 @@ def run_pipeline(deps: PipelineDeps, call_id: UUID) -> CallStatus:
         if call is None:
             raise
         kind = exc.failure_kind
+        current = CallStatus(call.status)
+        if current == CallStatus.SHIPPED:
+            return CallStatus.SHIPPED
+        if current == CallStatus.CANCELLED:
+            raise CallCancelled("Call is cancelled")
         if kind == FailureKind.TRANSCRIPTION:
             transition(session, call, CallStatus.FAILED, failure_kind=kind)
         elif kind == FailureKind.RECAP or (
@@ -164,6 +169,11 @@ def run_pipeline(deps: PipelineDeps, call_id: UUID) -> CallStatus:
         session.rollback()
         call = session.get(Call, call_id)
         if call is not None:
+            current = CallStatus(call.status)
+            if current == CallStatus.SHIPPED:
+                return CallStatus.SHIPPED
+            if current in {CallStatus.PARTIAL, CallStatus.CANCELLED}:
+                raise
             transition(session, call, CallStatus.FAILED, failure_kind=FailureKind.INFRASTRUCTURE)
             log_event(
                 session,

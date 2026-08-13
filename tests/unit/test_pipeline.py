@@ -150,6 +150,25 @@ def test_resume_transcribing_does_not_resubmit_job(session: Session, settings: S
     assert refreshed.status == CallStatus.SHIPPED
 
 
+def test_process_call_on_shipped_is_idempotent(session: Session, settings: Settings, blob: MemoryBlobStore) -> None:
+    from app.pipeline.runner import PipelineDeps, run_pipeline
+    from tests.conftest import _scenario_providers
+
+    call_id = run_scenario(session, settings, blob, "happy_path")
+    call = session.get(Call, call_id)
+    assert call is not None
+    assert call.status == CallStatus.SHIPPED
+    transcription, recap, ml, _data = _scenario_providers("happy_path")
+    deps = PipelineDeps(
+        session=session, settings=settings, blob=blob, transcription=transcription, recap=recap, ml=ml
+    )
+    outcome = run_pipeline(deps, call_id)
+    assert outcome == CallStatus.SHIPPED
+    refreshed = session.get(Call, call_id)
+    assert refreshed is not None
+    assert refreshed.status == CallStatus.SHIPPED
+
+
 def test_analyzing_without_transcript_retries_transcribe(
     session: Session, settings: Settings, blob: MemoryBlobStore
 ) -> None:
