@@ -127,6 +127,22 @@ services:
       seaweedfs:
         condition: service_healthy
 
+  # Celery monitor (local only — do not put this behind ngrok).
+  flower:
+    build: .
+    command: celery -A app.tasks.celery_app flower --address=0.0.0.0 --port=5555
+    env_file: .env
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+      worker:
+        condition: service_started
+
 volumes:
   postgres_deal_truth:
   redis_data:

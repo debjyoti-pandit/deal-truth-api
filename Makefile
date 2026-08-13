@@ -1,4 +1,4 @@
-.PHONY: install lock lint typecheck test test-unit test-live migrate migrate-check api worker docker-build compose-up compose-down openapi setup infra up down restart reset-db truncate check smoke
+.PHONY: install lock lint typecheck test test-unit test-live migrate migrate-check api worker flower docker-build compose-up compose-down openapi setup infra up down restart reset-db truncate check smoke
 
 UV ?= uv
 
@@ -59,7 +59,7 @@ up:
 # (needed when ML embeddings change dimension).
 restart:
 	docker compose run --rm --build migrate
-	docker compose up -d --build --force-recreate --no-deps api worker ngrok
+	docker compose up -d --build --force-recreate --no-deps api worker flower ngrok
 
 down:
 	docker compose down --remove-orphans
@@ -79,6 +79,9 @@ api: check
 worker:
 	# acks_late is configured on the Celery app (task_acks_late); it is not a CLI flag.
 	$(UV) run celery -A app.tasks.celery_app worker --loglevel=info
+
+flower:
+	$(UV) run celery -A app.tasks.celery_app flower --address=127.0.0.1 --port=5555
 
 docker-build:
 	docker build -t deal-truth-api:local .

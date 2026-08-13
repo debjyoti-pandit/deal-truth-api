@@ -33,6 +33,7 @@ echo ""
 echo "Deal Truth API is up."
 echo "  API:     http://localhost:8000"
 echo "  Docs:    http://localhost:8000/docs"
+echo "  Flower:  http://localhost:5555  (Celery tasks — local only)"
 echo "  Health:  curl http://localhost:8000/health/live"
 echo "  Ngrok:   http://localhost:4040"
 

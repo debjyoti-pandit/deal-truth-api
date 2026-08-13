@@ -25,6 +25,6 @@ COPY LICENSE CONTRIBUTING.md SECURITY.md THIRD_PARTY_LICENSES.md ./
 
 RUN uv sync --frozen --no-dev --no-editable
 
-EXPOSE 8000
+EXPOSE 8000 5555
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

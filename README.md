@@ -22,7 +22,7 @@ Prerequisite: [Docker](https://docs.docker.com/get-docker/).
 make up
 ```
 
-That creates `.env`, generates `SIGNED_URL_SECRET` and `PYAI_WEBHOOK_SECRET` if empty, mints a PyAI sandbox key into `PYAI_API_KEY` when that field is empty, then starts Postgres, Redis, SeaweedFS, ngrok, runs migrations, and runs the API + Celery worker in Docker. Existing env values are left unchanged. Secrets are never printed.
+That creates `.env`, generates `SIGNED_URL_SECRET` and `PYAI_WEBHOOK_SECRET` if empty, mints a PyAI sandbox key into `PYAI_API_KEY` when that field is empty, then starts Postgres, Redis, SeaweedFS, ngrok, runs migrations, and runs the API + Celery worker + Flower in Docker. Existing env values are left unchanged. Secrets are never printed.
 
 Set `NGROK_AUTHTOKEN` (or `NGROK_AUTH_TOKEN`) in `.env`. For a **stable public URL**, set `NGROK_DOMAIN` to your ngrok Dev Domain from [ngrok domains](https://dashboard.ngrok.com/domains) (for example `your-name.ngrok-free.app`). `make up` writes `NGROK_DOMAIN` after the first successful tunnel if it is empty, then later restarts bind that same hostname with `ngrok http --url`. Inspector: http://localhost:4040.
 
@@ -33,9 +33,15 @@ curl http://localhost:8000/health/live
 curl http://localhost:8000/health/ready
 ```
 
-OpenAPI: http://localhost:8000/docs  
-Architecture (from this machine): http://localhost:8000/api/v1/reference/ARCHITECTURE.md  
-Doc catalog: http://localhost:8000/api/v1/reference
+| What | URL |
+|---|---|
+| OpenAPI | http://localhost:8000/docs |
+| Architecture | http://localhost:8000/api/v1/reference/ARCHITECTURE.md |
+| Doc catalog | http://localhost:8000/api/v1/reference |
+| Flower (Celery) | http://localhost:5555 |
+| Ngrok inspector | http://localhost:4040 |
+
+Flower shows queued / active / failed tasks while the stack runs. Open http://localhost:5555 on this machine only — do **not** put Flower behind ngrok.
 
 Stop with `make down`.
 
@@ -83,9 +89,10 @@ Python 3.12 and [uv](https://docs.astral.sh/uv/) required. Infra still runs in D
 make setup
 make api      # terminal 1
 make worker   # terminal 2
+make flower   # terminal 3 — http://127.0.0.1:5555
 ```
 
-`make worker` does **not** take `--acks-late`. Late acks are set in `app/tasks/celery_app.py` (`task_acks_late=True`).
+`make worker` does **not** take `--acks-late`. Late acks are set in `app/tasks/celery_app.py` (`task_acks_late=True`). Celery app module for Flower is `app.tasks.celery_app` (not `backend`).
 
 ## PyAI sandbox key
 
