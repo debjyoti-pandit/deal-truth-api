@@ -12,7 +12,7 @@ from app.pipeline.runner import run_pipeline
 from app.tasks.celery_app import celery_app
 
 
-@celery_app.task(bind=True, name="open_gong.process_call", max_retries=5, acks_late=True)
+@celery_app.task(bind=True, name="deal_truth.process_call", max_retries=5, acks_late=True)
 def process_call(self, call_id: str) -> str:  # type: ignore[no-untyped-def]
     settings = get_settings()
     factory = sync_session_factory()
@@ -34,6 +34,6 @@ def process_call(self, call_id: str) -> str:  # type: ignore[no-untyped-def]
             raise
 
 
-@celery_app.task(bind=True, name="open_gong.reanalyze_call", max_retries=5, acks_late=True)
+@celery_app.task(bind=True, name="deal_truth.reanalyze_call", max_retries=5, acks_late=True)
 def reanalyze_call(self, call_id: str) -> str:  # type: ignore[no-untyped-def]
     return process_call(call_id)

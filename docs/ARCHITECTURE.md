@@ -1,4 +1,4 @@
-# OpenGong — Architecture Reference (`open-gong-api`)
+# Deal Truth — Architecture Reference (`deal-truth`)
 
 > Single source of truth for what we are building, why, and how the pieces fit together.
 > Validated against the original hackathon design discussion (ChatGPT export) on 2026-08-13.
@@ -7,7 +7,7 @@
 
 ## 1. What We Are Building
 
-**OpenGong** is an open-source, Gong-style sales-call intelligence product.
+**Deal Truth** is an open-source sales-call intelligence product.
 
 A user uploads a call recording (or supplies an HTTPS recording URL). The system produces a
 complete, evidence-backed call report: diarized transcript, summaries, deal insights, coaching,
@@ -76,15 +76,15 @@ decision maker, next meeting committed, competitor active, blocker active.
 
 ## 3. System Architecture
 
-### Where `open-gong-api` fits in the overall product
+### Where `deal-truth` fits in the overall product
 
 ```mermaid
 flowchart TD
     Browser[User Browser] --> Caddy[Caddy reverse proxy]
-    Caddy --> UI[open-gong-web React plus Tailwind]
+    Caddy --> UI[deal-truth-web React plus Tailwind]
     UI -->|"REST + SSE"| API
 
-    subgraph apiRepo [open-gong-api - THIS REPO]
+    subgraph apiRepo [deal-truth - THIS REPO]
         API[FastAPI app] --> Valkey[(Valkey)]
         Valkey --> Worker[Celery workers]
         Worker --> Intel[Intelligence engine plus deterministic rules]
@@ -95,7 +95,7 @@ flowchart TD
     API -->|"stream audio, store uploads"| Seaweed[(SeaweedFS)]
     Worker -->|"Hear job via signed audio URL, Recap"| PyAI[PyAI Hear and Recap]
     PyAI -->|"webhook or poll"| API
-    Worker -->|"classify, emotion, embed, generate"| ML[open-gong-ml hosted ONNX service]
+    Worker -->|"classify, emotion, embed, generate"| ML[deal-truth-ml hosted ONNX service]
     Worker --> PG[(Postgres plus pgvector)]
     API --> PG
 ```
@@ -104,25 +104,25 @@ flowchart TD
 
 | Repo | Responsibility |
 |---|---|
-| `open-gong-api` (**this repo**) | FastAPI backend, Celery pipeline, data model, PyAI + ML clients, evidence validation, reports, exports, sharing |
-| `open-gong-web` | React + Tailwind UI (upload, report, audio player, evidence UI) |
-| `open-gong-ml` | Hosted ONNX inference service: GoEmotions, ModernBERT zero-shot, BGE-small embeddings, optional FLAN-T5 |
+| `deal-truth` (**this repo**) | FastAPI backend, Celery pipeline, data model, PyAI + ML clients, evidence validation, reports, exports, sharing |
+| `deal-truth-web` | React + Tailwind UI (upload, report, audio player, evidence UI) |
+| `deal-truth-ml` | Hosted ONNX inference service: GoEmotions, ModernBERT zero-shot, BGE-small embeddings, optional FLAN-T5 |
 
 ### Model / responsibility split (final, post-Qwen decision)
 
 The original design used a local Qwen3-4B LLM via llama.cpp. That was **rejected** — too slow
 for a hosted demo on modest hardware. The final design uses PyAI for speech, small OSS
-specialist models served by `open-gong-ml`, and deterministic rules — a general-purpose LLM
+specialist models served by `deal-truth-ml`, and deterministic rules — a general-purpose LLM
 is *not* required for most features.
 
 | Requirement | Implementation |
 |---|---|
 | STT + diarization + timestamps | PyAI Hear |
 | Call summary / recap | PyAI Recap (pack `sales_outbound`) |
-| Emotions | `SamLowe/roberta-base-go_emotions` (via open-gong-ml) |
-| Sales semantics (zero-shot) | `MoritzLaurer/ModernBERT-base-zeroshot-v2.0`, INT8 ONNX (via open-gong-ml) |
-| Embeddings | `BAAI/bge-small-en-v1.5` → 384-dim → pgvector (via open-gong-ml) |
-| Optional generation (polish, Ask synthesis) | `google/flan-t5-small` (swappable to base, via open-gong-ml) |
+| Emotions | `SamLowe/roberta-base-go_emotions` (via deal-truth-ml) |
+| Sales semantics (zero-shot) | `MoritzLaurer/ModernBERT-base-zeroshot-v2.0`, INT8 ONNX (via deal-truth-ml) |
+| Embeddings | `BAAI/bge-small-en-v1.5` → 384-dim → pgvector (via deal-truth-ml) |
+| Optional generation (polish, Ask synthesis) | `google/flan-t5-small` (swappable to base, via deal-truth-ml) |
 | Talk ratio / monologue / questions / keywords | Deterministic Python |
 | Evidence validation | Deterministic Python |
 | Blob storage | SeaweedFS (S3-compatible API via boto3) |
@@ -148,7 +148,7 @@ flowchart LR
         PT[PyAITranscriptionProvider]
         PR[PyAIRecapProvider]
         PTr[PyAITraceProvider - feature flagged]
-        OM[OpenGongMLClient]
+        OM[DealTruthMLClient]
         SW[SeaweedFSS3BlobStore]
     end
 
@@ -237,21 +237,21 @@ retries.
 
 | Surface | Detail |
 |---|---|
-| Submit transcription | `POST /transcription/jobs` — stable OpenGong `call_id`, `audio_url` or multipart, `call_direction`, `customer_name`, `pack_id`, `numerals=true`, formats `json`/`srt`/`vtt`, **either** `channel=true` (stereo) **or** `diarize=true` (mono) — never both, webhook URL, `Idempotency-Key` header |
+| Submit transcription | `POST /transcription/jobs` — stable Deal Truth `call_id`, `audio_url` or multipart, `call_direction`, `customer_name`, `pack_id`, `numerals=true`, formats `json`/`srt`/`vtt`, **either** `channel=true` (stereo) **or** `diarize=true` (mono) — never both, webhook URL, `Idempotency-Key` header |
 | Webhook | `POST /api/v1/webhooks/pyai/transcription` — verify `X-PyAI-Signature` HMAC over **exact raw request bytes**; webhook signals the waiting worker over Redis — always fetch the authoritative job afterwards |
 | Polling fallback | Used when ngrok is down or the webhook does not arrive before the deadline. Bounded interval + named timeout (`PYAI_JOB_TIMEOUT`) |
 | Local tunnel | Docker Compose `ngrok` service. `NGROK_AUTHTOKEN` required. **Stable URL:** `NGROK_DOMAIN` (Dev Domain from the ngrok dashboard) bound with `ngrok http --url`. `make up` pins `NGROK_DOMAIN` after the first tunnel if empty. Inspector `localhost:4040`. |
 | Results | Handle inline `result` and offloaded `result_url`; timed segments, word timings, SRT/VTT signed URLs, mono diarization, stereo channel separation |
 | Recap | `GET /recap/calls/{call_id}` (same stable call_id). Normalize status, headline, tldr, summary/summary_draft, decisions, action items, next steps, important moments, call signals, structured fields. If unavailable due to scopes: named capability warning → ML generation fallback if enabled → continue deterministic analysis → result may be `PARTIAL` |
-| Audio input modes | `PYAI_AUDIO_INPUT_MODE=audio_url` (PyAI fetches a **short-lived HMAC-signed public OpenGong URL** — never SeaweedFS credentials) or `multipart` |
+| Audio input modes | `PYAI_AUDIO_INPUT_MODE=audio_url` (PyAI fetches a **short-lived HMAC-signed public Deal Truth URL** — never SeaweedFS credentials) or `multipart` |
 
 Env vars: `PYAI_API_KEY`, `PYAI_BASE_URL`, `PYAI_WEBHOOK_SECRET`, `PYAI_RECAP_ENABLED`,
 `PYAI_TRACE_ENABLED`, `PYAI_RECAP_PACK_ID=sales_outbound`, `PYAI_AUDIO_INPUT_MODE`,
 `PUBLIC_API_BASE_URL`, `NGROK_ENABLED`, `NGROK_API_URL`, `NGROK_AUTHTOKEN`, `NGROK_DOMAIN`.
 
-### open-gong-ml (hosted inference service)
+### deal-truth-ml (hosted inference service)
 
-Contract assumed (single-file change in `OpenGongMLClient` if the hosted service differs):
+Contract assumed (single-file change in `DealTruthMLClient` if the hosted service differs):
 
 ```text
 POST /classify   -> zero-shot sales labels (ModernBERT)
@@ -272,7 +272,7 @@ signals (zero-shot), plus deterministic entity rules. They are stored and displa
 
 ### SeaweedFS blob layout
 
-Buckets: `opengong-audio`, `opengong-results`, `opengong-samples`.
+Buckets: `deal-truth-audio`, `deal-truth-results`, `deal-truth-samples`.
 
 ```text
 calls/{call_id}/original/{safe_filename}
@@ -401,7 +401,7 @@ ASYNC      Celery + Valkey (broker + result backend)
 DATA       PostgreSQL + pgvector (asyncpg)
 BLOB       SeaweedFS via S3 API (boto3)
 SPEECH     PyAI Hear + Recap (Trace feature-flagged)
-ML         open-gong-ml hosted service (GoEmotions, ModernBERT zero-shot, BGE-small, FLAN-T5)
+ML         deal-truth-ml hosted service (GoEmotions, ModernBERT zero-shot, BGE-small, FLAN-T5)
 HTTP       httpx
 TOOLING    uv, Ruff, MyPy, pytest + pytest-asyncio
 DEPLOY     Docker + docker-compose (postgres, redis, seaweedfs, api, worker)
@@ -450,11 +450,11 @@ committed, README covers startup + live tests.
 | Seek-to-timestamp audio evidence | No clip pre-generation; original recording + Range requests |
 | Webhook is trigger-only | Authoritative result always fetched from PyAI after signature verification |
 | Retry only infrastructure failures | Retrying a semantic failure until it "happens to pass" fabricates evidence |
-| React UI / Caddy out of this repo | Lives in `open-gong-web`; this repo is API + pipeline only |
-| ML models out of this repo | Live in `open-gong-ml`; this repo only consumes its HTTP contract |
+| React UI / Caddy out of this repo | Lives in `deal-truth-web`; this repo is API + pipeline only |
+| ML models out of this repo | Live in `deal-truth-ml`; this repo only consumes its HTTP contract |
 
 ## 14. Known Open Items
 
-- Confirm the hosted `open-gong-ml` endpoint contract (`/classify`, `/emotion`, `/embed`, `/generate`) — isolated to `OpenGongMLClient` if it differs.
-- PyAI Speak for generating synthetic sample calls (mentioned in original design) is optional and not part of P0; `opengong-samples` bucket exists for it.
+- Confirm the hosted `deal-truth-ml` endpoint contract (`/classify`, `/emotion`, `/embed`, `/generate`) — isolated to `DealTruthMLClient` if it differs.
+- PyAI Speak for generating synthetic sample calls (mentioned in original design) is optional and not part of P0; `deal-truth-samples` bucket exists for it.
 - PyAI Trace remains interface-only behind `PYAI_TRACE_ENABLED`.

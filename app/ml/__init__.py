@@ -1,4 +1,4 @@
-"""ML inference client interface and open-gong-ml HTTP implementation."""
+"""ML inference client interface and deal-truth-ml HTTP implementation."""
 
 from __future__ import annotations
 
@@ -114,7 +114,7 @@ class MLInferenceClient(Protocol):
     def generate(self, prompt: str, *, max_tokens: int = 256) -> str: ...
 
 
-class OpenGongMLClient:
+class DealTruthMLClient:
     def __init__(self, settings: Settings, client: httpx.Client | None = None) -> None:
         self._settings = settings
         self._client = client or httpx.Client(timeout=60.0)

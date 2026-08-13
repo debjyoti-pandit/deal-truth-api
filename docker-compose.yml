@@ -2,15 +2,15 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: opengong
-      POSTGRES_PASSWORD: opengong
-      POSTGRES_DB: opengong
+      POSTGRES_USER: deal_truth
+      POSTGRES_PASSWORD: deal_truth
+      POSTGRES_DB: deal_truth
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U opengong"]
+      test: ["CMD-SHELL", "pg_isready -U deal_truth"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -42,8 +42,8 @@ services:
     command: alembic upgrade head
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://opengong:opengong@postgres:5432/opengong
-      DATABASE_SYNC_URL: postgresql+psycopg://opengong:opengong@postgres:5432/opengong
+      DATABASE_URL: postgresql+asyncpg://deal_truth:deal_truth@postgres:5432/deal_truth
+      DATABASE_SYNC_URL: postgresql+psycopg://deal_truth:deal_truth@postgres:5432/deal_truth
     depends_on:
       postgres:
         condition: service_healthy
@@ -54,8 +54,8 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://opengong:opengong@postgres:5432/opengong
-      DATABASE_SYNC_URL: postgresql+psycopg://opengong:opengong@postgres:5432/opengong
+      DATABASE_URL: postgresql+asyncpg://deal_truth:deal_truth@postgres:5432/deal_truth
+      DATABASE_SYNC_URL: postgresql+psycopg://deal_truth:deal_truth@postgres:5432/deal_truth
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       S3_ENDPOINT_URL: http://seaweedfs:8333
@@ -99,8 +99,8 @@ services:
     command: celery -A app.tasks.celery_app worker --loglevel=info
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://opengong:opengong@postgres:5432/opengong
-      DATABASE_SYNC_URL: postgresql+psycopg://opengong:opengong@postgres:5432/opengong
+      DATABASE_URL: postgresql+asyncpg://deal_truth:deal_truth@postgres:5432/deal_truth
+      DATABASE_SYNC_URL: postgresql+psycopg://deal_truth:deal_truth@postgres:5432/deal_truth
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       S3_ENDPOINT_URL: http://seaweedfs:8333

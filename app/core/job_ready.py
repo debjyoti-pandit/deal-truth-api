@@ -10,7 +10,7 @@ from app.core.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-_KEY_PREFIX = "opengong:pyai:ready:"
+_KEY_PREFIX = "deal-truth:pyai:ready:"
 _TTL_SECONDS = 3600
 
 

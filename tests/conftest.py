@@ -31,7 +31,7 @@ def secret() -> str:
 
 @pytest.fixture
 def settings(tmp_path: Path, secret: str) -> Iterator[Settings]:
-    db = tmp_path / "opengong.db"
+    db = tmp_path / "deal-truth.db"
     env = {
         "APP_ENV": "test",
         "DATABASE_URL": f"sqlite+aiosqlite:///{db}",

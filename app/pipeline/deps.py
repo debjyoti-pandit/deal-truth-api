@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.job_ready import build_job_ready_waiter
 from app.core.settings import Settings
-from app.ml import OpenGongMLClient
+from app.ml import DealTruthMLClient
 from app.pipeline.runner import PipelineDeps
 from app.providers.pyai import PyAIRecapProvider, PyAITranscriptionProvider
 from app.storage.memory import MemoryBlobStore
@@ -42,6 +42,6 @@ def build_deps(session: Session, settings: Settings) -> PipelineDeps:
         blob=build_blob_store(settings),
         transcription=PyAITranscriptionProvider(settings),
         recap=PyAIRecapProvider(settings),
-        ml=OpenGongMLClient(settings),
+        ml=DealTruthMLClient(settings),
         job_ready=build_job_ready_waiter(settings),
     )

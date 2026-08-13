@@ -13,7 +13,7 @@ from app.core.job_ready import JobReadyWaiter, build_job_ready_waiter
 from app.core.security import verify_api_key
 from app.core.settings import Settings, get_settings
 from app.db import sync_session_factory
-from app.ml import MLInferenceClient, OpenGongMLClient
+from app.ml import MLInferenceClient, DealTruthMLClient
 from app.providers.base import CallRecapProvider, TranscriptionProvider
 from app.providers.pyai import PyAIRecapProvider, PyAITranscriptionProvider
 from app.storage.base import BlobStore
@@ -54,7 +54,7 @@ def build_container(settings: Settings | None = None) -> AppContainer:
         blob=blob,
         transcription=PyAITranscriptionProvider(settings),
         recap=PyAIRecapProvider(settings),
-        ml=OpenGongMLClient(settings),
+        ml=DealTruthMLClient(settings),
         enqueue_process=default_enqueue,
         job_ready=build_job_ready_waiter(settings),
     )

@@ -1,11 +1,11 @@
 [project]
-name = "open-gong-api"
+name = "deal-truth"
 version = "0.1.0"
-description = "OpenGong API — evidence-backed sales-call intelligence"
+description = "Deal Truth API — evidence-backed sales-call intelligence"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.12"
-authors = [{ name = "OpenGong contributors" }]
+authors = [{ name = "Deal Truth contributors" }]
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",

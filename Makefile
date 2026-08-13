@@ -33,7 +33,7 @@ migrate:
 
 migrate-check:
 	$(UV) run alembic check
-	$(UV) run alembic upgrade head --sql > /tmp/opengong-migration.sql
+	$(UV) run alembic upgrade head --sql > /tmp/deal-truth-migration.sql
 
 infra:
 	docker compose up -d --wait postgres redis seaweedfs ngrok
@@ -66,7 +66,7 @@ worker:
 	$(UV) run celery -A app.tasks.celery_app worker --loglevel=info
 
 docker-build:
-	docker build -t open-gong-api:local .
+	docker build -t deal-truth:local .
 
 compose-up: up
 

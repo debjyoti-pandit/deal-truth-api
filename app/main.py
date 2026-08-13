@@ -1,4 +1,4 @@
-"""OpenGong FastAPI application."""
+"""Deal Truth FastAPI application."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
     application = FastAPI(
-        title="OpenGong API",
+        title="Deal Truth API",
         version="0.1.0",
         description="Evidence-backed sales-call intelligence. NO PROOF IN THE TRANSCRIPT, NO CLAIM IN THE REPORT.",
         lifespan=lifespan,

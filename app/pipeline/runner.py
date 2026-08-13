@@ -341,7 +341,7 @@ def _analyze(
         manifest={
             "pyai_recap": bool(recap),
             "warnings": warnings,
-            "ml": "open-gong-ml",
+            "ml": "deal-truth-ml",
         },
     )
 

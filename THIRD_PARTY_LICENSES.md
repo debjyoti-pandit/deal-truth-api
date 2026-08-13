@@ -18,7 +18,7 @@ This project is MIT licensed. Runtime dependencies include (non-exhaustive):
 | uvicorn | BSD-3-Clause |
 | sse-starlette | BSD-3-Clause |
 
-PyAI, SeaweedFS, PostgreSQL, Valkey, and the hosted `open-gong-ml` models are used at runtime and keep their own licenses.
+PyAI, SeaweedFS, PostgreSQL, Valkey, and the hosted `deal-truth-ml` models are used at runtime and keep their own licenses.
 
 Generate a locked inventory with:
 

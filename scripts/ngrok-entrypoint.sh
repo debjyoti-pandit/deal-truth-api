@@ -1,5 +1,5 @@
 #!/bin/sh
-# Start an ngrok HTTPS tunnel to the OpenGong API (host port 8000).
+# Start an ngrok HTTPS tunnel to the Deal Truth API (host port 8000).
 # Always bind a stable hostname when NGROK_DOMAIN is set (ngrok --url).
 set -eu
 

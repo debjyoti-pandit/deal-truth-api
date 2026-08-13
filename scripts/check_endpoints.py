@@ -133,7 +133,7 @@ def run_live(base_url: str, schema: dict[str, Any], timeout: float) -> list[Prob
 
 
 def _prepare_in_process_env() -> None:
-    tmp = Path(tempfile.mkdtemp(prefix="opengong-smoke-"))
+    tmp = Path(tempfile.mkdtemp(prefix="deal-truth-smoke-"))
     db = tmp / "smoke.db"
     isolated = {
         "APP_ENV": "test",
@@ -197,7 +197,7 @@ def report(results: list[ProbeResult]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Smoke-check OpenGong HTTP endpoints")
+    parser = argparse.ArgumentParser(description="Smoke-check Deal Truth HTTP endpoints")
     parser.add_argument("--in-process", action="store_true", help="Use TestClient (run before starting the server)")
     parser.add_argument("--base-url", default="", help="Live server, e.g. http://localhost:8000")
     parser.add_argument("--wait", type=float, default=45.0, help="Seconds to wait for /health/live")
@@ -208,7 +208,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Checking endpoints in-process (server not required)...")
         return report(run_in_process())
 
-    base = args.base_url.strip() or os.environ.get("OPENGONG_BASE_URL", "http://localhost:8000")
+    base = args.base_url.strip() or os.environ.get("DEAL_TRUTH_BASE_URL", "http://localhost:8000")
     print(f"Checking endpoints at {base} ...")
     if not wait_for_live(base, args.wait):
         print("FAIL  GET /health/live never became ready", file=sys.stderr)

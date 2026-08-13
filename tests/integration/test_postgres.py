@@ -13,7 +13,7 @@ pytestmark = pytest.mark.integration
 def test_postgres_select() -> None:
     from sqlalchemy import create_engine, text
 
-    url = os.environ.get("DATABASE_SYNC_URL", "postgresql+psycopg://opengong:opengong@localhost:5432/opengong")
+    url = os.environ.get("DATABASE_SYNC_URL", "postgresql+psycopg://deal_truth:deal_truth@localhost:5432/deal_truth")
     engine = create_engine(url)
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))

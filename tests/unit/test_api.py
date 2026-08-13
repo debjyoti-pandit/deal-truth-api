@@ -11,7 +11,7 @@ def test_openapi_schema_valid(client: TestClient) -> None:
     response = client.get("/openapi.json")
     assert response.status_code == 200
     schema = response.json()
-    assert schema["info"]["title"] == "OpenGong API"
+    assert schema["info"]["title"] == "Deal Truth API"
     paths = schema["paths"]
     required = [
         "/health/live",

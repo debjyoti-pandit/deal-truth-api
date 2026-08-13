@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bring up the full OpenGong stack in Docker (env, Postgres, Redis, SeaweedFS, migrate, API, worker).
+# Bring up the full Deal Truth stack in Docker (env, Postgres, Redis, SeaweedFS, migrate, API, worker).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -30,7 +30,7 @@ fi
 docker compose up --build -d --wait --remove-orphans --force-recreate
 
 echo ""
-echo "OpenGong is up."
+echo "Deal Truth is up."
 echo "  API:     http://localhost:8000"
 echo "  Docs:    http://localhost:8000/docs"
 echo "  Health:  curl http://localhost:8000/health/live"

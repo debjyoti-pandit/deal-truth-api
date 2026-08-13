@@ -17,7 +17,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "open-gong-api"
+    app_name: str = "deal-truth"
     app_env: str = "development"
     log_level: str = "INFO"
     public_api_base_url: str = "http://localhost:8000"
@@ -31,8 +31,8 @@ class Settings(BaseSettings):
     api_keys: str = ""
     cors_origins: str = "http://localhost:5173"
 
-    database_url: str = "postgresql+asyncpg://opengong:opengong@localhost:5432/opengong"
-    database_sync_url: str = "postgresql+psycopg://opengong:opengong@localhost:5432/opengong"
+    database_url: str = "postgresql+asyncpg://deal_truth:deal_truth@localhost:5432/deal_truth"
+    database_sync_url: str = "postgresql+psycopg://deal_truth:deal_truth@localhost:5432/deal_truth"
 
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/1"
@@ -41,9 +41,9 @@ class Settings(BaseSettings):
     s3_access_key: str = ""
     s3_secret_key: str = ""
     s3_region: str = "us-east-1"
-    s3_bucket_audio: str = "opengong-audio"
-    s3_bucket_results: str = "opengong-results"
-    s3_bucket_samples: str = "opengong-samples"
+    s3_bucket_audio: str = "deal-truth-audio"
+    s3_bucket_results: str = "deal-truth-results"
+    s3_bucket_samples: str = "deal-truth-samples"
     s3_use_ssl: bool = False
     s3_addressing_style: str = "path"
 
