@@ -26,6 +26,8 @@ That creates `.env`, generates `SIGNED_URL_SECRET` and `PYAI_WEBHOOK_SECRET` if 
 
 Set `NGROK_AUTHTOKEN` (or `NGROK_AUTH_TOKEN`) in `.env`. For a **stable public URL**, set `NGROK_DOMAIN` to your ngrok Dev Domain from [ngrok domains](https://dashboard.ngrok.com/domains) (for example `your-name.ngrok-free.app`). `make up` writes `NGROK_DOMAIN` after the first successful tunnel if it is empty, then later restarts bind that same hostname with `ngrok http --url`. Inspector: http://localhost:4040.
 
+ML (sibling repo `deal-truth-ml`): `ML_SERVICE_BASE_URL=http://host.docker.internal:8081` is already in `.env.example`. Start ML with `cd ../deal-truth-ml && make up`. Local vs production env: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), `.env.production.example`.
+
 ```bash
 curl http://localhost:8000/health/live
 curl http://localhost:8000/health/ready

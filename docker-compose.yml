@@ -68,6 +68,9 @@ services:
       S3_ENDPOINT_URL: http://seaweedfs:8333
       NGROK_API_URL: http://ngrok:4040
       NGROK_ENABLED: ${NGROK_ENABLED:-true}
+      ML_SERVICE_BASE_URL: ${ML_SERVICE_BASE_URL:-http://host.docker.internal:8081}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     depends_on:
@@ -113,6 +116,9 @@ services:
       S3_ENDPOINT_URL: http://seaweedfs:8333
       NGROK_API_URL: http://ngrok:4040
       NGROK_ENABLED: ${NGROK_ENABLED:-true}
+      ML_SERVICE_BASE_URL: ${ML_SERVICE_BASE_URL:-http://host.docker.internal:8081}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       migrate:
         condition: service_completed_successfully
