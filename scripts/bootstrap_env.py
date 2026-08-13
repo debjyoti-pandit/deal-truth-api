@@ -95,7 +95,9 @@ def _mint_once(url: str, opener: object | None) -> dict[str, object]:
             body = response.read()
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
-            raise MintUnavailable("PyAI sandbox minting is disabled on this deployment (404)") from exc
+            raise MintUnavailable(
+                "PyAI sandbox minting is disabled on this deployment (404)"
+            ) from exc
         if exc.code == 429:
             raise MintUnavailable("PyAI sandbox minting rate-limited (429)") from exc
         raise RuntimeError(f"PyAI sandbox mint failed (HTTP {exc.code})") from exc
@@ -114,7 +116,11 @@ def _mint_once(url: str, opener: object | None) -> dict[str, object]:
         raise RuntimeError("PyAI sandbox mint returned unexpected payload")
 
     api_key = data.get("api_key")
-    if not isinstance(api_key, str) or not api_key.startswith(KEY_PREFIX) or len(api_key) > 512:
+    if (
+        not isinstance(api_key, str)
+        or not api_key.startswith(KEY_PREFIX)
+        or len(api_key) > 512
+    ):
         raise RuntimeError("PyAI sandbox mint returned an invalid api_key")
 
     return data
@@ -190,7 +196,11 @@ def bootstrap(env_path: Path = ENV, example_path: Path = EXAMPLE) -> int:
         notes.append("generated S3_ACCESS_KEY/S3_SECRET_KEY")
 
     pyai_key = _read_env_value(text, "PYAI_API_KEY") or ""
-    skip_mint = os.environ.get("PYAI_SKIP_SANDBOX_MINT", "").strip() in {"1", "true", "yes"}
+    skip_mint = os.environ.get("PYAI_SKIP_SANDBOX_MINT", "").strip() in {
+        "1",
+        "true",
+        "yes",
+    }
     if pyai_key:
         notes.append("kept existing PYAI_API_KEY")
     elif skip_mint:
@@ -223,6 +233,29 @@ def bootstrap(env_path: Path = ENV, example_path: Path = EXAMPLE) -> int:
         text = upsert_env(text, "NGROK_API_URL", "http://127.0.0.1:4040")
     if _read_env_value(text, "NGROK_DOMAIN") is None:
         text = upsert_env(text, "NGROK_DOMAIN", "")
+
+    ml_host = "deal-truth-ml-ngrok.ngrok-free.app"
+    ml_env = ROOT.parent / "deal-truth-ml" / ".env"
+    if ml_env.is_file():
+        ml_text = ml_env.read_text(encoding="utf-8")
+        from_ml = (_read_env_value(ml_text, "NGROK_DOMAIN") or "").strip()
+        app = (
+            _read_env_value(ml_text, "APP_NAME") or "deal-truth-ml"
+        ).strip() or "deal-truth-ml"
+        candidate = from_ml or f"{app}-ngrok.ngrok-free.app"
+        candidate = (
+            candidate.removeprefix("https://").removeprefix("http://").split("/")[0]
+        )
+        ephemeral = candidate.endswith(".ngrok.app") or candidate.endswith(".ngrok.io")
+        if (
+            candidate
+            and candidate != "deal-truth-ngrok.ngrok-free.app"
+            and not ephemeral
+        ):
+            ml_host = candidate
+    if not _read_env_value(text, "ML_NGROK_DOMAIN"):
+        text = upsert_env(text, "ML_NGROK_DOMAIN", ml_host)
+        notes.append("set ML_NGROK_DOMAIN for deal-truth-ml")
 
     env_path.write_text(text, encoding="utf-8")
     print("env ready" + (f" ({'; '.join(notes)})" if notes else ""))

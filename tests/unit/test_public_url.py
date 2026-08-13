@@ -56,6 +56,25 @@ def test_resolve_skips_ngrok_when_disabled() -> None:
     settings = Settings(
         public_api_base_url="http://localhost:8000",
         ngrok_enabled=False,
+        ngrok_domain="",
         signed_url_secret="unit-test-signed-url-secret",
     )
     assert resolve_public_api_base_url(settings) == "http://localhost:8000"
+
+
+def test_resolved_ml_service_base_url_prefers_explicit() -> None:
+    settings = Settings(
+        ml_service_base_url="http://host.docker.internal:8081",
+        ml_ngrok_domain="deal-truth-ml-ngrok.ngrok-free.app",
+        signed_url_secret="unit-test-signed-url-secret",
+    )
+    assert settings.resolved_ml_service_base_url == "http://host.docker.internal:8081"
+
+
+def test_resolved_ml_service_base_url_falls_back_to_app_ngrok() -> None:
+    settings = Settings(
+        ml_service_base_url="",
+        ml_ngrok_domain="deal-truth-ml-ngrok.ngrok-free.app",
+        signed_url_secret="unit-test-signed-url-secret",
+    )
+    assert settings.resolved_ml_service_base_url == "https://deal-truth-ml-ngrok.ngrok-free.app"

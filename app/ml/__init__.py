@@ -128,10 +128,13 @@ class DealTruthMLClient:
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
         if self._settings.ml_service_api_key:
             headers["Authorization"] = f"Bearer {self._settings.ml_service_api_key}"
+        base = self._settings.resolved_ml_service_base_url.lower()
+        if "ngrok" in base:
+            headers["ngrok-skip-browser-warning"] = "true"
         return headers
 
     def _post(self, path: str, json_body: dict[str, object]) -> dict[str, object] | list[object]:
-        url = f"{self._settings.ml_service_base_url.rstrip('/')}{path}"
+        url = f"{self._settings.resolved_ml_service_base_url.rstrip('/')}{path}"
         try:
             response = self._client.post(url, json=json_body, headers=self._headers())
         except httpx.HTTPError as exc:
