@@ -1,0 +1,120 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: opengong
+      POSTGRES_PASSWORD: opengong
+      POSTGRES_DB: opengong
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opengong"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.80
+    command: "server -s3 -s3.port=8333 -dir=/data -filer -master.volumeSizeLimitMB=100"
+    ports:
+      - "8333:8333"
+      - "9333:9333"
+      - "8888:8888"
+    volumes:
+      - seaweed_data:/data
+
+  migrate:
+    build: .
+    command: alembic upgrade head
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://opengong:opengong@postgres:5432/opengong
+      DATABASE_SYNC_URL: postgresql+psycopg://opengong:opengong@postgres:5432/opengong
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://opengong:opengong@postgres:5432/opengong
+      DATABASE_SYNC_URL: postgresql+psycopg://opengong:opengong@postgres:5432/opengong
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      S3_ENDPOINT_URL: http://seaweedfs:8333
+      NGROK_API_URL: http://ngrok:4040
+      NGROK_ENABLED: ${NGROK_ENABLED:-true}
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  ngrok:
+    image: ngrok/ngrok:3
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/ngrok-entrypoint.sh"]
+    volumes:
+      - ./scripts/ngrok-entrypoint.sh:/ngrok-entrypoint.sh:ro
+      - ./scripts/ngrok.yml:/ngrok.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-${NGROK_AUTH_TOKEN:-}}
+      NGROK_AUTH_TOKEN: ${NGROK_AUTH_TOKEN:-}
+      NGROK_DOMAIN: ${NGROK_DOMAIN:-}
+      NGROK_UPSTREAM: ${NGROK_UPSTREAM:-http://host.docker.internal:8000}
+    ports:
+      - "4040:4040"
+
+  worker:
+    build: .
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://opengong:opengong@postgres:5432/opengong
+      DATABASE_SYNC_URL: postgresql+psycopg://opengong:opengong@postgres:5432/opengong
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      S3_ENDPOINT_URL: http://seaweedfs:8333
+      NGROK_API_URL: http://ngrok:4040
+      NGROK_ENABLED: ${NGROK_ENABLED:-true}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  redis_data:
+  seaweed_data:

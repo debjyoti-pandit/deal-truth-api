@@ -1,0 +1,9 @@
+{
+  "status": "completed",
+  "headline": "Fixture recap headline",
+  "tldr": "Fixture tldr",
+  "summary": "Fixture summary",
+  "decisions": ["Decision one"],
+  "action_items": [{"text": "Send a document", "side": "seller", "due_text": "Friday"}],
+  "next_steps": [{"text": "Schedule a follow-up", "side": "customer"}]
+}

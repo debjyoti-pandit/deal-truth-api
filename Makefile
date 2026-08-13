@@ -1,0 +1,76 @@
+.PHONY: install lock lint typecheck test test-unit test-live migrate migrate-check api worker docker-build compose-up compose-down openapi setup infra up down check smoke
+
+UV ?= uv
+
+install:
+	$(UV) sync --extra dev
+
+lock:
+	$(UV) lock
+
+lint:
+	$(UV) run ruff check .
+	$(UV) run ruff format --check .
+
+fmt:
+	$(UV) run ruff check --fix .
+	$(UV) run ruff format .
+
+typecheck:
+	$(UV) run mypy app tests
+
+test:
+	$(UV) run pytest tests/unit tests/contract tests/integration -q
+
+test-unit:
+	$(UV) run pytest tests/unit tests/contract -q
+
+test-live:
+	RUN_PYAI_LIVE_TESTS=1 $(UV) run pytest tests/live -q
+
+migrate:
+	$(UV) run alembic upgrade head
+
+migrate-check:
+	$(UV) run alembic check
+	$(UV) run alembic upgrade head --sql > /tmp/opengong-migration.sql
+
+infra:
+	docker compose up -d --wait postgres redis seaweedfs ngrok
+
+setup: install
+	$(UV) run python scripts/bootstrap_env.py
+	$(MAKE) infra
+	$(UV) run alembic upgrade head
+	@echo ""
+	@echo "Infra is up. For host processes: make api  and  make worker"
+	@echo "For everything in Docker: make up"
+
+check:
+	$(UV) run python scripts/check_endpoints.py --in-process
+
+smoke:
+	$(UV) run python scripts/check_endpoints.py --base-url http://localhost:8000
+
+up:
+	bash scripts/docker_up.sh
+
+down:
+	docker compose down --remove-orphans
+
+api: check
+	$(UV) run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+worker:
+	# acks_late is configured on the Celery app (task_acks_late); it is not a CLI flag.
+	$(UV) run celery -A app.tasks.celery_app worker --loglevel=info
+
+docker-build:
+	docker build -t open-gong-api:local .
+
+compose-up: up
+
+compose-down: down
+
+openapi:
+	$(UV) run python scripts/export_openapi.py

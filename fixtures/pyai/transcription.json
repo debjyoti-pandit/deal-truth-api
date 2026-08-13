@@ -1,0 +1,26 @@
+{
+  "id": "job_fixture",
+  "status": "completed",
+  "language": "en",
+  "result": {
+    "language": "en",
+    "text": "We're losing around 6 hours every week.",
+    "duration_ms": 8000,
+    "segments": [
+      {
+        "id": 1,
+        "speaker": "speaker_0",
+        "start_ms": 0,
+        "end_ms": 4000,
+        "text": "Thanks for taking the time today."
+      },
+      {
+        "id": 2,
+        "speaker": "speaker_1",
+        "start_ms": 4000,
+        "end_ms": 8000,
+        "text": "We're losing around 6 hours every week."
+      }
+    ]
+  }
+}
