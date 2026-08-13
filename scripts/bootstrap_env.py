@@ -22,7 +22,7 @@ EXAMPLE = ROOT / ".env.example"
 ENV = ROOT / ".env"
 
 SANDBOX_KEYS_URL = "https://api.pyai.com/v1/sandbox/keys"
-SANDBOX_LABEL = "deal-truth"
+SANDBOX_LABEL = "deal-truth-api"
 MINT_TIMEOUT_SECONDS = 20
 MINT_ATTEMPTS = 4
 MINT_RETRY_CAP_SECONDS = 8
@@ -85,7 +85,7 @@ def _mint_once(url: str, opener: object | None) -> dict[str, object]:
         headers={
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "User-Agent": "deal-truth-bootstrap/0.1",
+            "User-Agent": "deal-truth-api-bootstrap/0.1",
         },
     )
     open_fn = opener.open if opener is not None else urllib.request.urlopen

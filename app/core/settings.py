@@ -17,7 +17,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "deal-truth"
+    app_name: str = "deal-truth-api"
     app_env: str = "development"
     log_level: str = "INFO"
     public_api_base_url: str = "http://localhost:8000"

@@ -1,4 +1,4 @@
-# Deal Truth — Architecture Reference (`deal-truth`)
+# Deal Truth API — Architecture Reference (`deal-truth-api`)
 
 > Single source of truth for what we are building, why, and how the pieces fit together.
 > Validated against the original hackathon design discussion (ChatGPT export) on 2026-08-13.
@@ -7,7 +7,9 @@
 
 ## 1. What We Are Building
 
-**Deal Truth** is an open-source sales-call intelligence product.
+**Deal Truth** is an open-source sales-call intelligence product. This repository
+(`deal-truth-api`) is the FastAPI backend and Celery pipeline. The UI lives in
+`deal-truth-web`; hosted ONNX inference lives in `deal-truth-ml`.
 
 A user uploads a call recording (or supplies an HTTPS recording URL). The system produces a
 complete, evidence-backed call report: diarized transcript, summaries, deal insights, coaching,
@@ -76,7 +78,7 @@ decision maker, next meeting committed, competitor active, blocker active.
 
 ## 3. System Architecture
 
-### Where `deal-truth` fits in the overall product
+### Where Deal Truth API (`deal-truth-api`) fits in the overall product
 
 ```mermaid
 flowchart TD
@@ -84,7 +86,7 @@ flowchart TD
     Caddy --> UI[deal-truth-web React plus Tailwind]
     UI -->|"REST + SSE"| API
 
-    subgraph apiRepo [deal-truth - THIS REPO]
+    subgraph apiRepo [deal-truth-api - THIS REPO]
         API[FastAPI app] --> Valkey[(Valkey)]
         Valkey --> Worker[Celery workers]
         Worker --> Intel[Intelligence engine plus deterministic rules]
@@ -104,7 +106,7 @@ flowchart TD
 
 | Repo | Responsibility |
 |---|---|
-| `deal-truth` (**this repo**) | FastAPI backend, Celery pipeline, data model, PyAI + ML clients, evidence validation, reports, exports, sharing |
+| `deal-truth-api` (**this repo**) | FastAPI backend, Celery pipeline, data model, PyAI + ML clients, evidence validation, reports, exports, sharing |
 | `deal-truth-web` | React + Tailwind UI (upload, report, audio player, evidence UI) |
 | `deal-truth-ml` | Hosted ONNX inference service: GoEmotions, ModernBERT zero-shot, BGE-small embeddings, optional FLAN-T5 |
 
@@ -237,13 +239,13 @@ retries.
 
 | Surface | Detail |
 |---|---|
-| Submit transcription | `POST /transcription/jobs` — stable Deal Truth `call_id`, `audio_url` or multipart, `call_direction`, `customer_name`, `pack_id`, `numerals=true`, formats `json`/`srt`/`vtt`, **either** `channel=true` (stereo) **or** `diarize=true` (mono) — never both, webhook URL, `Idempotency-Key` header |
+| Submit transcription | `POST /transcription/jobs` — stable Deal Truth API `call_id`, `audio_url` or multipart, `call_direction`, `customer_name`, `pack_id`, `numerals=true`, formats `json`/`srt`/`vtt`, **either** `channel=true` (stereo) **or** `diarize=true` (mono) — never both, webhook URL, `Idempotency-Key` header |
 | Webhook | `POST /api/v1/webhooks/pyai/transcription` — verify `X-PyAI-Signature` HMAC over **exact raw request bytes**; webhook signals the waiting worker over Redis — always fetch the authoritative job afterwards |
 | Polling fallback | Used when ngrok is down or the webhook does not arrive before the deadline. Bounded interval + named timeout (`PYAI_JOB_TIMEOUT`) |
 | Local tunnel | Docker Compose `ngrok` service. `NGROK_AUTHTOKEN` required. **Stable URL:** `NGROK_DOMAIN` (Dev Domain from the ngrok dashboard) bound with `ngrok http --url`. `make up` pins `NGROK_DOMAIN` after the first tunnel if empty. Inspector `localhost:4040`. |
 | Results | Handle inline `result` and offloaded `result_url`; timed segments, word timings, SRT/VTT signed URLs, mono diarization, stereo channel separation |
 | Recap | `GET /recap/calls/{call_id}` (same stable call_id). Normalize status, headline, tldr, summary/summary_draft, decisions, action items, next steps, important moments, call signals, structured fields. If unavailable due to scopes: named capability warning → ML generation fallback if enabled → continue deterministic analysis → result may be `PARTIAL` |
-| Audio input modes | `PYAI_AUDIO_INPUT_MODE=audio_url` (PyAI fetches a **short-lived HMAC-signed public Deal Truth URL** — never SeaweedFS credentials) or `multipart` |
+| Audio input modes | `PYAI_AUDIO_INPUT_MODE=audio_url` (PyAI fetches a **short-lived HMAC-signed public Deal Truth API URL** — never SeaweedFS credentials) or `multipart` |
 
 Env vars: `PYAI_API_KEY`, `PYAI_BASE_URL`, `PYAI_WEBHOOK_SECRET`, `PYAI_RECAP_ENABLED`,
 `PYAI_TRACE_ENABLED`, `PYAI_RECAP_PACK_ID=sales_outbound`, `PYAI_AUDIO_INPUT_MODE`,
@@ -450,8 +452,8 @@ committed, README covers startup + live tests.
 | Seek-to-timestamp audio evidence | No clip pre-generation; original recording + Range requests |
 | Webhook is trigger-only | Authoritative result always fetched from PyAI after signature verification |
 | Retry only infrastructure failures | Retrying a semantic failure until it "happens to pass" fabricates evidence |
-| React UI / Caddy out of this repo | Lives in `deal-truth-web`; this repo is API + pipeline only |
-| ML models out of this repo | Live in `deal-truth-ml`; this repo only consumes its HTTP contract |
+| React UI / Caddy out of this repo | Lives in `deal-truth-web`; `deal-truth-api` is API + pipeline only |
+| ML models out of this repo | Live in `deal-truth-ml`; Deal Truth API only consumes its HTTP contract |
 
 ## 14. Known Open Items
 

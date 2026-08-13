@@ -133,7 +133,7 @@ def run_live(base_url: str, schema: dict[str, Any], timeout: float) -> list[Prob
 
 
 def _prepare_in_process_env() -> None:
-    tmp = Path(tempfile.mkdtemp(prefix="deal-truth-smoke-"))
+    tmp = Path(tempfile.mkdtemp(prefix="deal-truth-api-smoke-"))
     db = tmp / "smoke.db"
     isolated = {
         "APP_ENV": "test",
@@ -197,7 +197,7 @@ def report(results: list[ProbeResult]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Smoke-check Deal Truth HTTP endpoints")
+    parser = argparse.ArgumentParser(description="Smoke-check Deal Truth API HTTP endpoints")
     parser.add_argument("--in-process", action="store_true", help="Use TestClient (run before starting the server)")
     parser.add_argument("--base-url", default="", help="Live server, e.g. http://localhost:8000")
     parser.add_argument("--wait", type=float, default=45.0, help="Seconds to wait for /health/live")

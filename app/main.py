@@ -1,4 +1,4 @@
-"""Deal Truth FastAPI application."""
+"""Deal Truth API FastAPI application."""
 
 from __future__ import annotations
 

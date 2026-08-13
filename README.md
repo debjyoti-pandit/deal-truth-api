@@ -1,10 +1,10 @@
 # Deal Truth API
 
-Evidence-backed sales-call intelligence.
+GitHub: [`deal-truth-api`](https://github.com/debjyoti-pandit/deal-truth-api). FastAPI backend and Celery pipeline for the Deal Truth product (`deal-truth-web` UI, `deal-truth-ml` inference).
 
 > **NO PROOF IN THE TRANSCRIPT, NO CLAIM IN THE REPORT.**
 
-Upload a recording (or an HTTPS URL). Deal Truth produces a diarized transcript, deterministic metrics, Customer Truth, Reality Check, Commitment Ledger, Deal Killers, a next-call battlecard, an evidence-safe follow-up email, and Ask-the-Call retrieval. Every factual claim points at real transcript segment IDs. Quotes are loaded from the transcript, never from a model.
+Upload a recording (or an HTTPS URL). Deal Truth API produces a diarized transcript, deterministic metrics, Customer Truth, Reality Check, Commitment Ledger, Deal Killers, a next-call battlecard, an evidence-safe follow-up email, and Ask-the-Call retrieval. Every factual claim points at real transcript segment IDs. Quotes are loaded from the transcript, never from a model.
 
 Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [all design docs](docs/README.md)
 
@@ -81,7 +81,7 @@ make worker   # terminal 2
 - Set `PYAI_SKIP_SANDBOX_MINT=1` to skip minting (offline).
 - Compose runs **ngrok** so PyAI can reach this machine. The worker prefers the webhook (`POST /api/v1/webhooks/pyai/transcription`) and falls back to bounded polling if the tunnel is down.
 - `PUBLIC_API_BASE_URL` stays `http://localhost:8000` for local browsers. PyAI-facing `audio_url` and `webhook_url` use the ngrok HTTPS URL.
-- `PYAI_AUDIO_INPUT_MODE=audio_url` issues a short-lived HMAC-signed Deal Truth URL. PyAI never receives SeaweedFS credentials.
+- `PYAI_AUDIO_INPUT_MODE=audio_url` issues a short-lived HMAC-signed Deal Truth API URL. PyAI never receives SeaweedFS credentials.
 - `PYAI_RECAP_PACK_ID=sales_outbound` by default. Recap failure leaves the transcript intact and finishes `PARTIAL`.
 
 Live tests (not CI):

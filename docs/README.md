@@ -1,4 +1,4 @@
-# Deal Truth design docs
+# Deal Truth API design docs
 
 These files are the product and architecture reference. The running API also serves them at `/api/v1/reference` (and `/api/v1/reference/{name}`) so a remote frontend or another machine on the ngrok URL can read them without cloning the repo.
 

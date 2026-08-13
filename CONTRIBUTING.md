@@ -6,8 +6,10 @@ Use the form that the host system allows. Do not flatten to `dealtruth`.
 
 | Context | Form | Examples |
 |---|---|---|
-| Humans, LICENSE, API title | Deal Truth | Deal Truth API |
-| Repo, PyPI, Docker, env `APP_NAME`, S3, Redis keys, files | `deal-truth` | `deal-truth:local`, `deal-truth-audio` |
+| Humans, LICENSE, OpenAPI title | Deal Truth API | Deal Truth API |
+| GitHub repo, PyPI, Docker image, env `APP_NAME` | `deal-truth-api` | `deal-truth-api:local` |
+| Product S3 buckets, Redis key prefix | `deal-truth` | `deal-truth-audio` |
+| Sibling repos | `deal-truth-web`, `deal-truth-ml` | UI and hosted ONNX service |
 | Python modules, Celery, Postgres user/db | `deal_truth` | `deal_truth.process_call` |
 | Classes | PascalCase | `DealTruthMLClient` |
 | Env var names | `DEAL_TRUTH_*` | `DEAL_TRUTH_BASE_URL` |

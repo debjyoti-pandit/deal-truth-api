@@ -1,4 +1,4 @@
-.PHONY: install lock lint typecheck test test-unit test-live migrate migrate-check api worker docker-build compose-up compose-down openapi setup infra up down check smoke
+.PHONY: install lock lint typecheck test test-unit test-live migrate migrate-check api worker docker-build compose-up compose-down openapi setup infra up down reset-db check smoke
 
 UV ?= uv
 
@@ -33,7 +33,7 @@ migrate:
 
 migrate-check:
 	$(UV) run alembic check
-	$(UV) run alembic upgrade head --sql > /tmp/deal-truth-migration.sql
+	$(UV) run alembic upgrade head --sql > /tmp/deal-truth-api-migration.sql
 
 infra:
 	docker compose up -d --wait postgres redis seaweedfs ngrok
@@ -72,7 +72,7 @@ worker:
 	$(UV) run celery -A app.tasks.celery_app worker --loglevel=info
 
 docker-build:
-	docker build -t deal-truth:local .
+	docker build -t deal-truth-api:local .
 
 compose-up: up
 
