@@ -24,7 +24,7 @@ from app.core.errors import ConflictError, NotFoundError
 from app.models.call import Call
 from app.models.events import ProcessingEvent
 from app.models.terms import TrackedTerm
-from app.models.transcript import Speaker
+from app.models.transcript import Speaker, TranscriptSegment
 from app.pipeline.state import log_event, transition
 from app.schemas import (
     CallCreate,
@@ -147,11 +147,21 @@ def reanalyze_call(
     container: AppContainer = Depends(get_container),
 ) -> CallDetail:
     call = _get_call(session, call_id)
-    if CallStatus(call.status) not in {CallStatus.SHIPPED, CallStatus.PARTIAL, CallStatus.FAILED, CallStatus.ANALYZING}:
-        if CallStatus(call.status) not in TERMINAL_CALL_STATUSES | {CallStatus.CREATED, CallStatus.QUEUED}:
-            pass
-    if CallStatus(call.status) in {CallStatus.SHIPPED, CallStatus.PARTIAL, CallStatus.FAILED}:
-        transition(session, call, CallStatus.ANALYZING)
+    status = CallStatus(call.status)
+    if status in {CallStatus.QUEUED, CallStatus.TRANSCRIBING, CallStatus.WAITING_FOR_RECAP, CallStatus.ANALYZING}:
+        container.enqueue_process(call.id)
+        return _detail(call)
+    has_transcript = (
+        session.scalar(select(TranscriptSegment.id).where(TranscriptSegment.call_id == call.id).limit(1)) is not None
+    )
+    if status == CallStatus.FAILED and not has_transcript:
+        transition(session, call, CallStatus.QUEUED)
+        session.commit()
+        container.enqueue_process(call.id)
+        return _detail(call)
+    if status not in {CallStatus.SHIPPED, CallStatus.PARTIAL, CallStatus.FAILED}:
+        raise ConflictError("Call is not ready to reanalyze")
+    transition(session, call, CallStatus.ANALYZING)
     session.commit()
     container.enqueue_process(call.id)
     return _detail(call)

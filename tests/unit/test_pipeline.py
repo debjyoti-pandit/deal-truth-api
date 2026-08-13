@@ -83,3 +83,70 @@ def test_absence_based_risks_for_no_timeline(session: Session, settings: Setting
         select(Insight).where(Insight.analysis_run_id == run.id, Insight.type == InsightType.DEAL_RISK)
     ).all()
     assert any(r.evidence_status == EvidenceStatus.ABSENCE_BASED and "timeline" in r.title.lower() for r in risks)
+
+
+def _queued_call_with_audio(session: Session, settings: Settings, blob: MemoryBlobStore, *, status: CallStatus, pyai_job_id: str | None = None):
+    from uuid import uuid4
+
+    from app.core.enums import CallDirection, RecordingMode, SourceType
+    from app.models.call import AudioAsset, Call
+    from app.pipeline.runner import PipelineDeps
+    from tests.conftest import _scenario_providers
+
+    transcription, recap, ml, _data = _scenario_providers("happy_path")
+    call = Call(
+        public_call_id=uuid4().hex[:12],
+        title="pipeline-resume",
+        customer_name="Sarah",
+        rep_name="Rahul",
+        call_direction=CallDirection.OUTBOUND,
+        source_type=SourceType.UPLOAD,
+        recording_mode=RecordingMode.MONO,
+        status=status,
+        pyai_job_id=pyai_job_id,
+        extra={},
+    )
+    session.add(call)
+    session.flush()
+    blob.put_bytes(settings.s3_bucket_audio, f"calls/{call.id}/original/call.wav", b"RIFF....WAVEfmt", "audio/wav")
+    session.add(
+        AudioAsset(
+            call_id=call.id,
+            bucket=settings.s3_bucket_audio,
+            object_key=f"calls/{call.id}/original/call.wav",
+            original_filename="call.wav",
+            content_type="audio/wav",
+            size_bytes=16,
+            checksum="abc",
+        )
+    )
+    session.commit()
+    deps = PipelineDeps(session=session, settings=settings, blob=blob, transcription=transcription, recap=recap, ml=ml)
+    return call, transcription, deps
+
+
+def test_resume_transcribing_does_not_resubmit_job(session: Session, settings: Settings, blob: MemoryBlobStore) -> None:
+    from app.pipeline.runner import run_pipeline
+
+    call, transcription, deps = _queued_call_with_audio(
+        session, settings, blob, status=CallStatus.TRANSCRIBING, pyai_job_id="job_already_submitted"
+    )
+    run_pipeline(deps, call.id)
+    assert transcription.submitted == []
+    refreshed = session.get(Call, call.id)
+    assert refreshed is not None
+    assert refreshed.status == CallStatus.SHIPPED
+
+
+def test_analyzing_without_transcript_retries_transcribe(
+    session: Session, settings: Settings, blob: MemoryBlobStore
+) -> None:
+    from app.pipeline.runner import run_pipeline
+
+    call, transcription, deps = _queued_call_with_audio(session, settings, blob, status=CallStatus.ANALYZING)
+    outcome = run_pipeline(deps, call.id)
+    assert outcome == CallStatus.SHIPPED
+    assert transcription.submitted
+    refreshed = session.get(Call, call.id)
+    assert refreshed is not None
+    assert refreshed.status == CallStatus.SHIPPED

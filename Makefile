@@ -1,4 +1,4 @@
-.PHONY: install lock lint typecheck test test-unit test-live migrate migrate-check api worker docker-build compose-up compose-down openapi setup infra up down reset-db check smoke
+.PHONY: install lock lint typecheck test test-unit test-live migrate migrate-check api worker docker-build compose-up compose-down openapi setup infra up down restart reset-db truncate check smoke
 
 UV ?= uv
 
@@ -55,6 +55,11 @@ smoke:
 up:
 	bash scripts/docker_up.sh
 
+# Fastest stack bounce that leaves Postgres (and migrate) alone.
+# Rebuilds api/worker images, recreates api/worker/ngrok only.
+restart:
+	docker compose up -d --build --force-recreate --no-deps api worker ngrok
+
 down:
 	docker compose down --remove-orphans
 
@@ -63,6 +68,9 @@ reset-db:
 	docker compose stop postgres migrate api worker || true
 	docker compose rm -f postgres migrate || true
 	docker volume rm deal-truth_postgres_deal_truth deal-truth_postgres_data 2>/dev/null || true
+
+truncate:
+	$(UV) run python scripts/truncate_db.py --yes
 
 api: check
 	$(UV) run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

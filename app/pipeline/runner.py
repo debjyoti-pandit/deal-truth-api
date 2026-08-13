@@ -19,7 +19,9 @@ from app.core.enums import (
 )
 from app.core.errors import (
     CallCancelled,
+    ConflictError,
     NamedError,
+    PyAIJobTimeout,
     PyAIRecapFailed,
     PyAIRecapPendingTimeout,
     PyAIScopeMissing,
@@ -173,48 +175,86 @@ def run_pipeline(deps: PipelineDeps, call_id: UUID) -> CallStatus:
 
 
 def _await_transcript(deps: PipelineDeps, job_id: str, *, webhook_url: str | None):
-    if webhook_url:
-        if deps.job_ready.wait(job_id, deps.settings.pyai_poll_deadline_seconds):
+    # Poll immediately. Waiting the full webhook deadline first left calls stuck in
+    # TRANSCRIBING until PyAI happened to POST (or for 10 minutes).
+    deadline = time.monotonic() + deps.settings.pyai_poll_deadline_seconds
+    interval = max(0.5, deps.settings.pyai_poll_interval_seconds)
+    while time.monotonic() < deadline:
+        payload = deps.transcription.get_job(job_id)
+        status = str(payload.get("status") or "").lower()
+        if status in {
+            "completed",
+            "complete",
+            "succeeded",
+            "success",
+            "done",
+            "failed",
+            "cancelled",
+            "canceled",
+            "error",
+        }:
             return deps.transcription.fetch_normalized(job_id)
-    return deps.transcription.poll_until_complete(job_id)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        wait_for = min(interval, remaining)
+        if webhook_url:
+            deps.job_ready.wait(job_id, wait_for)
+        else:
+            time.sleep(wait_for)
+    raise PyAIJobTimeout("PyAI transcription job timed out", details={"job_id": job_id})
 
 
 def _ensure_queued(deps: PipelineDeps, call: Call) -> None:
-    if CallStatus(call.status) in {CallStatus.CREATED, CallStatus.UPLOADING}:
+    status = CallStatus(call.status)
+    if status == CallStatus.ANALYZING:
+        # Reanalyze-without-transcript used to land here, then _transcribe crashed
+        # with ANALYZING -> TRANSCRIBING.
+        transition(deps.session, call, CallStatus.FAILED)
+        status = CallStatus.FAILED
+    if status in {CallStatus.CREATED, CallStatus.UPLOADING, CallStatus.FAILED}:
         transition(deps.session, call, CallStatus.QUEUED)
         deps.session.commit()
 
 
 def _transcribe(deps: PipelineDeps, call: Call) -> tuple[object, list[SegmentView]]:
     session = deps.session
-    transition(session, call, CallStatus.TRANSCRIBING)
-    log_event(session, call, stage="transcribe", state=EventState.STARTED)
-    session.commit()
+    status = CallStatus(call.status)
+    if status not in {CallStatus.QUEUED, CallStatus.TRANSCRIBING}:
+        raise ConflictError(f"Cannot transcribe from {status.value}")
+    if status != CallStatus.TRANSCRIBING:
+        transition(session, call, CallStatus.TRANSCRIBING)
+        log_event(session, call, stage="transcribe", state=EventState.STARTED)
+        session.commit()
 
     public_base = resolve_public_api_base_url(deps.settings)
-    asset = session.scalars(select(AudioAsset).where(AudioAsset.call_id == call.id)).first()
-    audio_url = None
-    if asset is not None:
-        expires = int(time.time()) + deps.settings.signed_url_ttl_seconds
-        query = build_signed_audio_query(asset.id, expires, deps.settings.hmac_secret)
-        audio_url = f"{public_base}/api/v1/public/audio/{asset.id}?{query}"
-
     webhook = f"{public_base}/api/v1/webhooks/pyai/transcription" if is_public_https_url(public_base) else None
-    handle = deps.transcription.submit_job(
-        call_id=call.id,
-        public_call_id=call.public_call_id,
-        audio_url=audio_url,
-        audio_stream=None,
-        call_direction=call.call_direction.value,
-        customer_name=call.customer_name,
-        recording_mode=call.recording_mode.value,
-        webhook_url=webhook,
-        idempotency_key=f"transcribe:{call.id}",
-    )
-    call.pyai_job_id = handle.job_id
-    session.commit()
 
-    transcript = _await_transcript(deps, handle.job_id, webhook_url=webhook)
+    if call.pyai_job_id:
+        job_id = call.pyai_job_id
+    else:
+        asset = session.scalars(select(AudioAsset).where(AudioAsset.call_id == call.id)).first()
+        audio_url = None
+        if asset is not None:
+            expires = int(time.time()) + deps.settings.signed_url_ttl_seconds
+            query = build_signed_audio_query(asset.id, expires, deps.settings.hmac_secret)
+            audio_url = f"{public_base}/api/v1/public/audio/{asset.id}?{query}"
+        handle = deps.transcription.submit_job(
+            call_id=call.id,
+            public_call_id=call.public_call_id,
+            audio_url=audio_url,
+            audio_stream=None,
+            call_direction=call.call_direction.value,
+            customer_name=call.customer_name,
+            recording_mode=call.recording_mode.value,
+            webhook_url=webhook,
+            idempotency_key=f"transcribe:{call.id}",
+        )
+        call.pyai_job_id = handle.job_id
+        session.commit()
+        job_id = handle.job_id
+
+    transcript = _await_transcript(deps, job_id, webhook_url=webhook)
     keys = blob_keys(call.id, "audio.bin")
     store_json(deps.blob, deps.settings, call.id, keys.transcription, transcript.raw)
     if transcript.recording_mode:

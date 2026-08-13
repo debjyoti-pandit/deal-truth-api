@@ -24,4 +24,7 @@ celery_app.conf.update(
     task_track_started=True,
     broker_connection_retry_on_startup=True,
     task_default_retry_delay=settings.celery_retry_backoff,
+    broker_transport_options={
+        "visibility_timeout": int(settings.pyai_poll_deadline_seconds) + 120,
+    },
 )
