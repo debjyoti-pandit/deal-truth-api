@@ -183,6 +183,12 @@ def bootstrap(env_path: Path = ENV, example_path: Path = EXAMPLE) -> int:
     if webhook_new:
         notes.append("generated PYAI_WEBHOOK_SECRET")
 
+    # Local SeaweedFS S3 accepts any identity when unconfigured; boto3 still needs keys to sign.
+    text, s3_access_new = ensure_random_secret(text, "S3_ACCESS_KEY")
+    text, s3_secret_new = ensure_random_secret(text, "S3_SECRET_KEY")
+    if s3_access_new or s3_secret_new:
+        notes.append("generated S3_ACCESS_KEY/S3_SECRET_KEY")
+
     pyai_key = _read_env_value(text, "PYAI_API_KEY") or ""
     skip_mint = os.environ.get("PYAI_SKIP_SANDBOX_MINT", "").strip() in {"1", "true", "yes"}
     if pyai_key:

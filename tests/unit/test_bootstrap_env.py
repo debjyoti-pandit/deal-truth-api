@@ -167,6 +167,8 @@ def test_bootstrap_adds_empty_ngrok_keys(tmp_path: Path, monkeypatch: pytest.Mon
     assert "NGROK_AUTHTOKEN=" in text
     assert "NGROK_AUTHTOKEN=\n" in text or text.strip().endswith("NGROK_AUTHTOKEN=")
     assert "NGROK_ENABLED=true" in text
+    assert re.search(r"^S3_ACCESS_KEY=.+$", text, re.MULTILINE)
+    assert re.search(r"^S3_SECRET_KEY=.+$", text, re.MULTILINE)
 
 
 def test_bootstrap_maps_ngrok_auth_token_alias(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

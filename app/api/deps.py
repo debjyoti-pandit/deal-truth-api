@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from uuid import UUID
@@ -48,7 +49,7 @@ def build_container(settings: Settings | None = None) -> AppContainer:
         try:
             blob.ensure_buckets()
         except Exception:
-            pass
+            logging.getLogger(__name__).exception("storage bucket setup failed; uploads will retry")
     return AppContainer(
         settings=settings,
         blob=blob,

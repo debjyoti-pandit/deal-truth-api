@@ -6,11 +6,19 @@ from io import BytesIO
 from typing import BinaryIO
 
 from botocore.config import Config
-from botocore.exceptions import BotoCoreError, ClientError
+from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
 from app.core.errors import BlobDownloadFailed, BlobNotFound, BlobUploadFailed
 from app.core.settings import Settings
 from app.storage.base import BlobObject
+
+_MISSING_BUCKET = frozenset({"NoSuchBucket", "404", "NotFound"})
+
+
+def _error_code(exc: BaseException) -> str:
+    if isinstance(exc, ClientError):
+        return str((exc.response.get("Error") or {}).get("Code") or "ClientError")
+    return type(exc).__name__
 
 
 class SeaweedFSS3BlobStore:
@@ -43,8 +51,16 @@ class SeaweedFSS3BlobStore:
             except ClientError:
                 try:
                     self._client.create_bucket(Bucket=bucket)
-                except ClientError as exc:
-                    raise BlobUploadFailed("Failed to create storage bucket") from exc
+                except (ClientError, BotoCoreError, NoCredentialsError) as exc:
+                    raise BlobUploadFailed(
+                        "Failed to create storage bucket",
+                        details={"error_code": _error_code(exc)},
+                    ) from exc
+            except (BotoCoreError, NoCredentialsError) as exc:
+                raise BlobUploadFailed(
+                    "Failed to create storage bucket",
+                    details={"error_code": _error_code(exc)},
+                ) from exc
 
     def upload_stream(
         self,
@@ -56,17 +72,37 @@ class SeaweedFSS3BlobStore:
         length: int | None = None,
     ) -> int:
         extra: dict[str, object] = {"ContentType": content_type}
-        try:
-            if length is not None:
-                extra["ContentLength"] = length
+
+        def _put() -> None:
             self._client.upload_fileobj(stream, bucket, key, ExtraArgs=extra)
-        except (BotoCoreError, ClientError) as exc:
-            raise BlobUploadFailed("Failed to upload object") from exc
+
+        try:
+            _put()
+        except (BotoCoreError, ClientError, NoCredentialsError) as exc:
+            code = _error_code(exc)
+            if code in _MISSING_BUCKET:
+                self.ensure_buckets()
+                try:
+                    stream.seek(0)
+                except Exception:
+                    pass
+                try:
+                    _put()
+                except (BotoCoreError, ClientError, NoCredentialsError) as retry_exc:
+                    raise BlobUploadFailed(
+                        "Failed to upload object",
+                        details={"error_code": _error_code(retry_exc)},
+                    ) from retry_exc
+            else:
+                raise BlobUploadFailed("Failed to upload object", details={"error_code": code}) from exc
         try:
             head = self._client.head_object(Bucket=bucket, Key=key)
             return int(head.get("ContentLength") or length or 0)
         except (BotoCoreError, ClientError) as exc:
-            raise BlobUploadFailed("Failed to confirm uploaded object") from exc
+            raise BlobUploadFailed(
+                "Failed to confirm uploaded object",
+                details={"error_code": _error_code(exc)},
+            ) from exc
 
     def put_bytes(self, bucket: str, key: str, data: bytes, content_type: str) -> int:
         return self.upload_stream(bucket, key, BytesIO(data), content_type, length=len(data))
