@@ -84,7 +84,7 @@ class FakeMLClient:
         *,
         generation_text: str | None = None,
         fail_generation: bool = False,
-        embedding_dim: int = 384,
+        embedding_dim: int = 1024,
     ) -> None:
         self.classifications = classifications or {}
         self.emotions = emotions or {}

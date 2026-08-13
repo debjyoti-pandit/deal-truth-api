@@ -71,7 +71,7 @@ decision maker, next meeting committed, competitor active, blocker active.
 | Next Call Battlecard | Deterministic template from validated data; optional generation may polish wording but never add facts |
 | Manager Brief | Pure template over existing validated insights — no model call |
 | Evidence-safe follow-up email | Sentence objects `{text, evidence_segment_ids, supported}`; courtesy text marked `NON_FACTUAL`; polish must preserve sentence count + evidence mapping or fall back |
-| Ask-the-Call | BGE embeddings + pgvector top-K retrieval; optional FLAN-T5 synthesis that must retain retrieved segment IDs; retrieval-only fallback is valid |
+| Ask-the-Call | Qwen3 1024-dim embeddings + pgvector top-K retrieval; optional generation that must retain retrieved segment IDs; retrieval-only fallback is valid |
 | Export + sharing | JSON and Markdown export; hashed, expiring, revocable read-only share tokens |
 
 ---
@@ -108,7 +108,7 @@ flowchart TD
 |---|---|
 | `deal-truth-api` (**this repo**) | FastAPI backend, Celery pipeline, data model, PyAI + ML clients, evidence validation, reports, exports, sharing |
 | `deal-truth-web` | React + Tailwind UI (upload, report, audio player, evidence UI) |
-| `deal-truth-ml` | Hosted ONNX inference service: GoEmotions, ModernBERT zero-shot, BGE-small embeddings, optional FLAN-T5 |
+| `deal-truth-ml` | Cloudflare Worker + Workers AI: Qwen3 classify/emotions, Qwen3 1024-dim embeddings, GPT-OSS judge, optional generation |
 
 ### Model / responsibility split (final, post-Qwen decision)
 
@@ -123,7 +123,7 @@ is *not* required for most features.
 | Call summary / recap | PyAI Recap (pack `sales_outbound`) |
 | Emotions | `SamLowe/roberta-base-go_emotions` (via deal-truth-ml) |
 | Sales semantics (zero-shot) | `MoritzLaurer/ModernBERT-base-zeroshot-v2.0`, INT8 ONNX (via deal-truth-ml) |
-| Embeddings | `BAAI/bge-small-en-v1.5` → 384-dim → pgvector (via deal-truth-ml) |
+| Embeddings | `@cf/qwen/qwen3-embedding-0.6b` → 1024-dim → pgvector (via deal-truth-ml) |
 | Optional generation (polish, Ask synthesis) | `google/flan-t5-small` (swappable to base, via deal-truth-ml) |
 | Talk ratio / monologue / questions / keywords | Deterministic Python |
 | Evidence validation | Deterministic Python |
@@ -258,7 +258,7 @@ Contract assumed (single-file change in `DealTruthMLClient` if the hosted servic
 ```text
 POST /classify   -> zero-shot sales labels (ModernBERT)
 POST /emotion    -> GoEmotions labels
-POST /embed      -> 384-dim embeddings (BGE-small)
+POST /embed      -> 1024-dim embeddings (Qwen3 embedding 0.6b)
 POST /generate   -> optional FLAN-T5 generation
 ```
 
@@ -309,7 +309,7 @@ UUID primary keys unless a stable string is required. All tables via Alembic mig
 | `evidence_links` | insight_id, transcript_segment_id, relationship, sort_order |
 | `recap_records` | call_id, provider_status, headline, tldr, summary, raw_record JSONB |
 | `call_metrics` | call_id, talk_ratio JSONB, longest_monologue JSONB, question_rate JSONB, keyword_hits JSONB |
-| `transcript_chunks` | call_id, start_segment_id, end_segment_id, text, embedding vector(384) |
+| `transcript_chunks` | call_id, start_segment_id, end_segment_id, text, embedding vector(1024) |
 | `processing_events` | call_id, stage, state, attempt, error_code, message, details JSONB |
 | `share_links` | call_id, token_hash (never plaintext), expires_at, revoked_at |
 | `tracked_terms` | call or org scope, type, value, aliases JSONB |

@@ -55,9 +55,10 @@ smoke:
 up:
 	bash scripts/docker_up.sh
 
-# Fastest stack bounce that leaves Postgres (and migrate) alone.
-# Rebuilds api/worker images, recreates api/worker/ngrok only.
+# Bounce API/worker/ngrok without wiping Postgres. Applies pending Alembic first
+# (needed when ML embeddings change dimension).
 restart:
+	docker compose run --rm --build migrate
 	docker compose up -d --build --force-recreate --no-deps api worker ngrok
 
 down:

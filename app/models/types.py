@@ -1,4 +1,4 @@
-"""Dialect-portable 384-dim embedding column (pgvector on Postgres, JSON elsewhere)."""
+"""Dialect-portable 1024-dim embedding column (pgvector on Postgres, JSON elsewhere)."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ except ImportError:  # pragma: no cover
 class EmbeddingVector(TypeDecorator[list[float]]):
     impl = JSON
     cache_ok = True
-    dim = 384
+    dim = 1024
 
     def load_dialect_impl(self, dialect: Dialect) -> Any:
         if dialect.name == "postgresql" and Vector is not None:

@@ -11,7 +11,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.enums import AnalysisRunStatus, SpeakerRole
+from app.core.errors import MLResponseInvalid
 from app.core.settings import Settings
+from app.models.types import EmbeddingVector
 from app.intelligence.domain import SegmentView, ValidatedInsight
 from app.models.analysis import AnalysisRun, CallMetrics, Insight, RecapRecord
 from app.models.call import Call
@@ -196,6 +198,11 @@ def persist_chunks(
 ) -> None:
     session.execute(delete(TranscriptChunk).where(TranscriptChunk.call_id == call.id))
     for chunk, vector in zip(chunks, embeddings, strict=False):
+        if len(vector) != EmbeddingVector.dim:
+            raise MLResponseInvalid(
+                "ML embedding dimension does not match the database column",
+                details={"expected": EmbeddingVector.dim, "got": len(vector)},
+            )
         session.add(
             TranscriptChunk(
                 call_id=call.id,
