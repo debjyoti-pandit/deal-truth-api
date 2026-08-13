@@ -4,6 +4,7 @@ from app.core.errors import (
     MLServiceUnavailable,
     PyAIJobFailed,
     PyAIJobTimeout,
+    PyAIPaymentRequired,
     PyAISubmitFailed,
 )
 from app.core.retry import should_retry
@@ -16,6 +17,7 @@ def test_retry_infrastructure_not_semantic() -> None:
     assert not should_retry(EvidenceUnsupported("no proof"))
     assert not should_retry(InvalidAudio("bad"))
     assert not should_retry(PyAIJobFailed("model failed the transcription"))
+    assert not should_retry(PyAIPaymentRequired("no credits"))
 
 
 def test_infrastructure_failure_is_not_a_sales_test() -> None:

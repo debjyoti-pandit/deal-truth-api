@@ -18,6 +18,7 @@ from app.core.errors import (
     PyAIJobCancelled,
     PyAIJobFailed,
     PyAIJobTimeout,
+    PyAIPaymentRequired,
     PyAIRecapFailed,
     PyAIRecapPendingTimeout,
     PyAIResultFetchFailed,
@@ -202,6 +203,11 @@ class PyAITranscriptionProvider:
     def _raise_for_status(self, response: httpx.Response, *, submit: bool = False) -> None:
         if response.status_code in {401, 403}:
             raise PyAIAuthFailed("PyAI authentication failed")
+        if response.status_code == 402:
+            raise PyAIPaymentRequired(
+                "PyAI rejected the request because the account has no remaining credits",
+                details={"status_code": 402},
+            )
         if response.status_code in _TRANSIENT_HTTP:
             raise (
                 PyAISubmitFailed("PyAI request failed with a transient error")

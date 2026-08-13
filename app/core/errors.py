@@ -42,6 +42,13 @@ class PyAIAuthFailed(NamedError):
     failure_kind = FailureKind.TRANSCRIPTION
 
 
+class PyAIPaymentRequired(NamedError):
+    code = "PYAI_PAYMENT_REQUIRED"
+    http_status = 402
+    retryable = False
+    failure_kind = FailureKind.TRANSCRIPTION
+
+
 class PyAIScopeMissing(NamedError):
     code = "PYAI_SCOPE_MISSING"
     http_status = 502
