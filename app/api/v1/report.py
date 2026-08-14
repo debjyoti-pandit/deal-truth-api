@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import date
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -23,6 +25,7 @@ from app.core.errors import (
     NotFoundError,
     NotReadyError,
 )
+from app.exports.report import InsightIdentity, attach_insight_ids, insight_identity
 from app.intelligence.ask import ask as ask_call
 from app.intelligence.ask import ask_lexical
 from app.intelligence.email import build_follow_up, polish_or_fallback
@@ -54,6 +57,37 @@ def _latest_run(session: Session, call_id: UUID) -> AnalysisRun | None:
     ).first()
 
 
+def _insight_ids_by_identity(session: Session, call_id: UUID) -> dict[InsightIdentity, list[str]]:
+    """Map report-insight content to the Insight.id GET /insights serves for the same row."""
+    run = _latest_run(session, call_id)
+    if run is None:
+        return {}
+    rows = session.scalars(
+        select(Insight).where(Insight.analysis_run_id == run.id).order_by(Insight.created_at, Insight.id)
+    ).all()
+    links = session.execute(
+        select(EvidenceLink.insight_id, EvidenceLink.transcript_segment_id)
+        .join(Insight, EvidenceLink.insight_id == Insight.id)
+        .where(Insight.analysis_run_id == run.id)
+        .order_by(EvidenceLink.insight_id, EvidenceLink.sort_order)
+    ).all()
+    segments_by_insight: dict[UUID, list[str]] = {}
+    for insight_id, segment_id in links:
+        segments_by_insight.setdefault(insight_id, []).append(str(segment_id))
+    out: dict[InsightIdentity, list[str]] = {}
+    for row in rows:
+        key = insight_identity(
+            {
+                "type": row.type.value,
+                "title": row.title,
+                "summary": row.summary,
+                "segment_ids": segments_by_insight.get(row.id, []),
+            }
+        )
+        out.setdefault(key, []).append(str(row.id))
+    return out
+
+
 @router.get("/calls/{call_id}/report")
 def get_report(
     call_id: UUID,
@@ -65,14 +99,20 @@ def get_report(
         raise NotFoundError("Call not found")
     require_report_ready(call)
     keys = blob_keys(call.id, "audio.bin")
+    report: dict[str, Any] | None = None
     try:
         if container.blob.exists(container.settings.s3_bucket_results, keys.report_json):
             raw = container.blob.get_bytes(container.settings.s3_bucket_results, keys.report_json)
-            return json.loads(raw.decode("utf-8"))
+            report = json.loads(raw.decode("utf-8"))
     except NamedError:
         raise
     except Exception as exc:
         raise BlobDownloadFailed("Report artifact could not be read") from exc
+    if report is not None:
+        # API-4: build_report runs on ValidatedInsight objects, which carry no Insight.id,
+        # so the id a card needs for ?insight=<id> is resolved here against the persisted
+        # rows — the same ids GET /insights serves.
+        return attach_insight_ids(report, _insight_ids_by_identity(session, call.id))
     return {
         "call_id": str(call.id),
         "public_call_id": call.public_call_id,
@@ -171,6 +211,46 @@ def get_metrics(call_id: UUID, session: Session = Depends(get_sync_session)) -> 
     }
 
 
+def _segment_spans(session: Session, call_id: UUID) -> dict[UUID, tuple[int, int]]:
+    rows = session.execute(
+        select(TranscriptSegment.id, TranscriptSegment.start_ms, TranscriptSegment.end_ms).where(
+            TranscriptSegment.call_id == call_id
+        )
+    ).all()
+    return {row[0]: (row[1], row[2]) for row in rows}
+
+
+def _pack_chunks(session: Session, call_id: UUID) -> list[tuple[dict[str, object], Sequence[float]]]:
+    """Reload indexed chunks in the shape the in-pipeline chunk dicts have.
+
+    API-5: transcript_chunks stores no timestamps, so a chunk rebuilt from it produced
+    moments with start_ms/end_ms null — moments the player could not seek to. The span is
+    resolved from the segments the chunk already cites, so no migration is needed.
+    """
+    chunks = session.scalars(select(TranscriptChunk).where(TranscriptChunk.call_id == call_id)).all()
+    if not chunks:
+        return []
+    spans = _segment_spans(session, call_id)
+    packed: list[tuple[dict[str, object], Sequence[float]]] = []
+    for chunk in chunks:
+        segment_ids = [chunk.start_segment_id, chunk.end_segment_id]
+        known = [spans[sid] for sid in segment_ids if sid in spans]
+        packed.append(
+            (
+                {
+                    "text": chunk.text,
+                    "start_segment_id": chunk.start_segment_id,
+                    "end_segment_id": chunk.end_segment_id,
+                    "segment_ids": segment_ids,
+                    "start_ms": min(start for start, _ in known) if known else None,
+                    "end_ms": max(end for _, end in known) if known else None,
+                },
+                chunk.embedding or [],
+            )
+        )
+    return packed
+
+
 @router.post("/calls/{call_id}/ask")
 def ask_endpoint(
     call_id: UUID,
@@ -181,20 +261,7 @@ def ask_endpoint(
     call = session.get(Call, call_id)
     if call is None:
         raise NotFoundError("Call not found")
-    chunks = session.scalars(select(TranscriptChunk).where(TranscriptChunk.call_id == call_id)).all()
-    packed = []
-    for chunk in chunks:
-        packed.append(
-            (
-                {
-                    "text": chunk.text,
-                    "start_segment_id": chunk.start_segment_id,
-                    "end_segment_id": chunk.end_segment_id,
-                    "segment_ids": [chunk.start_segment_id, chunk.end_segment_id],
-                },
-                chunk.embedding or [],
-            )
-        )
+    packed = _pack_chunks(session, call_id)
     # GAP-BE-012: an unindexed call is an empty retrieval result, not a 503.
     if not packed:
         return {
