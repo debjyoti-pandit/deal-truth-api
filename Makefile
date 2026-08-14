@@ -1,4 +1,4 @@
-.PHONY: install lock lint fmt format typecheck test test-unit test-live migrate migrate-check api worker flower docker-build compose-up compose-down openapi setup infra infra-local up up-local down restart restart-local reset-db truncate check smoke hooks seaweed-tunnel
+.PHONY: install lock lint fmt format typecheck test test-unit test-live migrate migrate-check api worker flower docker-build compose-up compose-down openapi setup infra infra-local up up-local down restart restart-local reset-db truncate check smoke hooks seaweed-tunnel render-web
 
 UV ?= uv
 NPM ?= npm
@@ -120,6 +120,12 @@ compose-down: down
 # Docs: docs/render.md
 seaweed-tunnel:
 	docker compose up -d ngrok-seaweed
+
+# Render web process: Alembic then uvicorn. Use when Pre-Deploy is locked.
+# Render Start Command: make render-web
+# or: bash scripts/render_web.sh
+render-web:
+	bash scripts/render_web.sh
 
 openapi:
 	$(UV) run python scripts/export_openapi.py

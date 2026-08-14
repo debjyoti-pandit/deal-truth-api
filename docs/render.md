@@ -7,11 +7,13 @@ The laptop must stay awake. If Seaweed or the tunnel dies, uploads and reports f
 
 ## One-time: Render services
 
-1. **PostgreSQL** — create a database. Use the **Internal** URL on Render (host like `dpg-…-a`).
-2. **Key Value (Redis)** — same region as the web service. Copy **Internal Redis URL**.
+1. **PostgreSQL** — same **region** as the web service. On the database **Info** page, copy the
+   full **Internal Database URL** (do not invent or truncate the host).
+2. **Key Value (Redis)** — same region. Copy the full **Internal Redis URL**.
 3. **Web** service (this repo)
-   - Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-   - Pre-deploy: `alembic upgrade head`
+   - Start: `make render-web` (runs `alembic upgrade head` then uvicorn).
+     Docker image default CMD is the same script if Start is locked.
+   - Pre-deploy: leave empty if the field is locked.
 4. **Background Worker** (same repo, same env)
    - Start: `celery -A app.tasks.celery_app worker --loglevel=info`
 5. In Render Postgres **PSQL**, once:
@@ -38,7 +40,19 @@ Do not use the API domain `deal-truth-ngrok.ngrok-free.app` for S3.
 
 Paste into **Environment**. Replace `REPLACE_*` and the Seaweed ngrok host after `make seaweed-tunnel`.
 
-Do not commit real passwords. Internal `dpg-` / `red-` hosts only work **inside Render**.
+Do not commit real passwords.
+
+Paste the dashboard URLs, then only change the scheme for SQLAlchemy:
+
+- Internal host is a short `dpg-…-a` (no public DNS). It works **only** if the web service,
+  worker, and Postgres are the **same Render account and region**.
+- If logs show `failed to resolve host 'dpg-…-a'`, the short host is not on this service’s
+  private network. Use the **External Database URL** instead. That host looks like
+  `dpg-….REGION-postgres.render.com` (keep the full suffix). Add SSL query params.
+
+`DATABASE_URL` uses `postgresql+asyncpg://` and `?ssl=require`.
+`DATABASE_SYNC_URL` uses `postgresql+psycopg://` and `?sslmode=require` (needed for
+`GET /calls` and Alembic).
 
 ```bash
 APP_NAME=deal-truth-api
@@ -56,6 +70,8 @@ CORS_ORIGINS=https://REPLACE_WEB_APP
 
 DATABASE_URL=postgresql+asyncpg://REPLACE_DB_USER:REPLACE_DB_PASSWORD@REPLACE_DPG_HOST/deal_truth?ssl=require
 DATABASE_SYNC_URL=postgresql+psycopg://REPLACE_DB_USER:REPLACE_DB_PASSWORD@REPLACE_DPG_HOST/deal_truth?sslmode=require
+# REPLACE_DPG_HOST = full host from the dashboard. If Internal fails DNS, use External:
+# dpg-XXXX.oregon-postgres.render.com  (region may differ)
 
 CELERY_BROKER_URL=redis://REPLACE_RED_HOST:6379/0
 CELERY_RESULT_BACKEND=redis://REPLACE_RED_HOST:6379/1
@@ -99,9 +115,28 @@ SOURCE_FETCH_MAX_REDIRECTS=3
 SLACK_WEBHOOK_HOSTS=hooks.slack.com
 ```
 
-If internal Postgres SSL fails, drop `?ssl=require` / `?sslmode=require`.
+If **internal** Postgres SSL fails, drop `?ssl=require` / `?sslmode=require`.
+Keep SSL on the **external** host.
 
 Local `.env` `S3_ENDPOINT_URL` stays `http://localhost:8333` (or `http://seaweedfs:8333` in Compose). Only Render uses the ngrok Seaweed URL.
+
+## Local UI → this Render API
+
+The web app is a **different repo** (`deal-truth-web` / `deal-truth-ui`). Do not paste the
+API’s Postgres/Redis/S3/PyAI vars into the UI. Only the public API URL and the API key.
+
+Put this in the UI `.env` (Vite) and restart `npm run dev`:
+
+```bash
+VITE_API_BASE_URL=https://deal-truth-api-8uez.onrender.com
+VITE_API_KEY=REPLACE_WITH_RENDER_API_KEYS
+```
+
+The UI must send `Authorization: Bearer <VITE_API_KEY>` or `X-API-Key: <VITE_API_KEY>` on
+every `/api/v1/*` call. `EventSource` `/stream` uses `?api_key=`.
+
+Render `CORS_ORIGINS` must include the UI origin (`http://localhost:5173` and/or
+`http://localhost:3000`).
 
 ## Checks
 
@@ -109,4 +144,6 @@ Local `.env` `S3_ENDPOINT_URL` stays `http://localhost:8333` (or `http://seaweed
 curl -sS https://REPLACE_RENDER_WEB.onrender.com/health/ready
 ```
 
-Expect `"status":"ready"` and `"workers": 1`. Upload a call; the object should appear in local Seaweed (`localhost:8333`).
+Expect `"status":"ready"` and `"workers": 1`. If `GET /api/v1/calls` 500s with
+`failed to resolve host 'dpg-…'`, switch both `DATABASE_*` URLs to the External host and
+redeploy. Upload a call; the object should appear in local Seaweed (`localhost:8333`).

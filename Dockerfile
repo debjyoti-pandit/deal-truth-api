@@ -27,4 +27,5 @@ RUN uv sync --frozen --no-dev --no-editable
 
 EXPOSE 8000 5555
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Migrate then serve so Render works when Pre-Deploy is locked.
+CMD ["bash", "scripts/render_web.sh"]
