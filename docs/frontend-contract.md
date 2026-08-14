@@ -218,7 +218,10 @@ retrying | skipped`. `POST /process` records a `QUEUED` event.
 - Budget is **120s** from stream open (was ~30s). Exactly one of `terminal`, `timeout`, or
   `error` ends any stream, so the client is never left guessing why it went quiet.
 - When `AUTH_MODE=api_key`, `/stream` also accepts `?api_key=<key>` because `EventSource`
-  cannot send headers. All other endpoints require the header.
+  cannot send headers. All other endpoints require the header. A `/stream` request
+  without a key returns **200 text/event-stream** with `event: error`,
+  `code: UNAUTHORIZED`, `reconnect: false` (not HTTP 401) so the browser does not
+  retry EventSource forever.
 
 ## Audio playback (GAP-BE-008)
 

@@ -10,6 +10,7 @@ from fastapi import Depends, Header, Request
 from sqlalchemy.orm import Session
 
 from app.core.job_ready import JobReadyWaiter, build_job_ready_waiter
+from app.core.logging import get_logger
 from app.core.security import verify_api_key
 from app.core.settings import Settings, get_settings
 from app.db import sync_session_factory
@@ -18,6 +19,8 @@ from app.providers.base import CallRecapProvider, TranscriptionProvider
 from app.providers.pyai import PyAIRecapProvider, PyAITranscriptionProvider
 from app.storage.base import BlobStore
 from app.storage.seaweed import SeaweedFSS3BlobStore
+
+_log = get_logger(__name__)
 
 
 @dataclass
@@ -45,7 +48,14 @@ def build_container(settings: Settings | None = None) -> AppContainer:
         blob: BlobStore = memory_blob()
     else:
         blob = SeaweedFSS3BlobStore(settings)
-        blob.ensure_buckets(attempts=20, delay_seconds=0.5)
+        attempts = 2 if settings.s3_optional else 20
+        delay = 0.2 if settings.s3_optional else 0.5
+        try:
+            blob.ensure_buckets(attempts=attempts, delay_seconds=delay)
+        except Exception:
+            if not settings.s3_optional:
+                raise
+            _log.warning("storage unavailable; S3_OPTIONAL=true, API will stay up")
     return AppContainer(
         settings=settings,
         blob=blob,
@@ -65,6 +75,10 @@ def get_blob(container: AppContainer = Depends(get_container)) -> BlobStore:
     return container.blob
 
 
+def is_sse_stream_path(path: str) -> bool:
+    return path.rstrip("/").endswith("/stream")
+
+
 async def require_auth(
     request: Request,
     authorization: str | None = Header(default=None),
@@ -72,9 +86,9 @@ async def require_auth(
 ) -> None:
     settings: Settings = request.app.state.container.settings
     provided = authorization or x_api_key
-    # GAP-BE-015: EventSource cannot set headers, so /stream also accepts ?api_key=.
-    if provided is None and request.url.path.endswith("/stream"):
-        provided = request.query_params.get("api_key")
+    # EventSource cannot set headers. Always accept ?api_key= on /stream (GAP-BE-015).
+    if is_sse_stream_path(request.url.path):
+        provided = provided or request.query_params.get("api_key")
     verify_api_key(provided, settings)
 
 

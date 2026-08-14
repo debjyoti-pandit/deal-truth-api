@@ -85,6 +85,7 @@ S3_BUCKET_RESULTS=deal-truth-results
 S3_BUCKET_SAMPLES=deal-truth-samples
 S3_USE_SSL=true
 S3_ADDRESSING_STYLE=path
+S3_OPTIONAL=true
 
 MAX_AUDIO_BYTES=524288000
 ALLOWED_AUDIO_MIME_TYPES=audio/mpeg,audio/wav,audio/x-wav,audio/wave,audio/mp4,audio/ogg,audio/webm,audio/flac,audio/x-m4a,video/mp4

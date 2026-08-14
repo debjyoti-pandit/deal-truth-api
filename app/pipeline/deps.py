@@ -5,12 +5,15 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.core.job_ready import build_job_ready_waiter
+from app.core.logging import get_logger
 from app.core.settings import Settings
 from app.ml import DealTruthMLClient
 from app.pipeline.runner import PipelineDeps
 from app.providers.pyai import PyAIRecapProvider, PyAITranscriptionProvider
 from app.storage.memory import MemoryBlobStore
 from app.storage.seaweed import SeaweedFSS3BlobStore
+
+_log = get_logger(__name__)
 
 _memory_blob: MemoryBlobStore | None = None
 
@@ -31,7 +34,14 @@ def build_blob_store(settings: Settings):
     if settings.app_env == "test":
         return memory_blob()
     store = SeaweedFSS3BlobStore(settings)
-    store.ensure_buckets(attempts=20, delay_seconds=0.5)
+    attempts = 2 if settings.s3_optional else 20
+    delay = 0.2 if settings.s3_optional else 0.5
+    try:
+        store.ensure_buckets(attempts=attempts, delay_seconds=delay)
+    except Exception:
+        if not settings.s3_optional:
+            raise
+        _log.warning("storage unavailable; S3_OPTIONAL=true, worker will stay up")
     return store
 
 

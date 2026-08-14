@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     s3_bucket_samples: str = "deal-truth-samples"
     s3_use_ssl: bool = False
     s3_addressing_style: str = "path"
+    # When true, a down Seaweed/ngrok tunnel does not block API startup or workers.
+    # Uploads still fail with BLOB_UPLOAD_FAILED so the UI can show an error instead of hanging.
+    s3_optional: bool = True
 
     max_audio_bytes: int = 524_288_000
     allowed_audio_mime_types: str = (
