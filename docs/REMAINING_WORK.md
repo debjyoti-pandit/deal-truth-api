@@ -111,6 +111,10 @@ responses (containment already enforced; keep it that way).
 - `refused_claims` has no ORM relationship from its parents (DB `ON DELETE CASCADE` only —
   correct on Postgres, orphans on SQLite in tests). Cosmetic.
 - Husky v9 deprecation warnings on every commit in both repos (two lines to delete per hook).
+- Celery `visibility_timeout` is `PYAI_POLL_DEADLINE_SECONDS + 120` and does not budget the
+  ML phase (worst case N×300s on a very long call). Mitigated today by the idempotent,
+  acks-late task — a redelivered run is a no-op — but worth a real budget when touching
+  `app/tasks/celery_app.py`.
 
 ---
 

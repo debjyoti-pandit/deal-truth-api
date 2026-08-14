@@ -50,6 +50,8 @@ def settings(tmp_path: Path, secret: str) -> Iterator[Settings]:
         "S3_SECRET_KEY": "",
         "PYAI_API_KEY": "",
         "ML_SERVICE_API_KEY": "",
+        # Pinned so a local .env override cannot skew the chunk-count assertions.
+        "ML_MAX_BATCH_SIZE": "32",
     }
     old = {k: os.environ.get(k) for k in env}
     os.environ.update(env)

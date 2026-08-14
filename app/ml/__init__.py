@@ -275,7 +275,8 @@ class MLInferenceClient(Protocol):
 class DealTruthMLClient:
     def __init__(self, settings: Settings, client: httpx.Client | None = None) -> None:
         self._settings = settings
-        # The Worker chunks classify/emotions sequentially inside one HTTP request.
+        # 300s applies per request. Batches are chunked client-side (_batched_rows), and the
+        # Worker further sub-chunks LLM prompts within each request.
         self._client = client or httpx.Client(timeout=httpx.Timeout(300.0, connect=10.0))
         self._owns_client = client is None
 
