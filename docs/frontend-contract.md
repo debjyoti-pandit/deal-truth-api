@@ -89,6 +89,103 @@ names lifted verbatim from the transcript. No model call, nothing invented.
 | `top_deal_killer` | The `payload.kind` of the highest-priority deal killer, chosen by a fixed priority so the pick never depends on insight ordering. Evidenced blockers outrank absence-based ones. `null` when nothing was evidenced. |
 | `primary_goal` / `questions_to_ask` | Templated from `top_deal_killer` and the qualification dimensions the transcript never supported, so two calls do not produce identical cards. Falls back to a generic three when a call evidenced nothing. Max 5 questions. |
 
+## CRM preview — field-level provenance
+
+`GET /calls/{id}/crm-preview` (authenticated) → what would be written to the CRM, field by
+field, and what would not. Every other conversation tool writes the model's output straight
+into HubSpot and inherits its hallucinations; this refuses per field, with the quote.
+
+Like `/refusals` and unlike `/report`, there is **no readiness gate**: a call with no analysis
+run answers "every gated field is blocked, nothing has been observed", which is true and
+renderable, so the panel never has to disappear behind a 409.
+
+```json
+{
+  "call_id": "<uuid>",
+  "fields": [
+    {
+      "name": "call_note_why_they_buy",
+      "state": "SUPPORTED",
+      "value": "We're losing around 6 hours every week manually routing these calls.",
+      "reason": null,
+      "evidence_segment_ids": ["<uuid>"]
+    },
+    {
+      "name": "deal_amount",
+      "state": "MANUAL",
+      "value": null,
+      "reason": "Nothing in the transcript establishes an agreed amount. \"800 dollars\" was quoted by the rep; a figure that was said is not a figure that was agreed.",
+      "evidence_segment_ids": ["<uuid>"]
+    },
+    {
+      "name": "log_completed_meeting",
+      "state": "BLOCKED",
+      "value": null,
+      "reason": "The customer did not commit to a next meeting.",
+      "evidence_segment_ids": []
+    }
+  ]
+}
+```
+
+Every field object always has all five keys, and every field in the table below is always
+present in `fields`, in that order — a field that silently disappeared is a field nobody
+notices was refused.
+
+| Key | Meaning |
+|---|---|
+| `name` | The CRM property name. Stable; key your mapping on it. |
+| `state` | `SUPPORTED` \| `MANUAL` \| `BLOCKED`. Only `SUPPORTED` may be written to the CRM. |
+| `value` | The value to write. **Non-null only when `state` is `SUPPORTED`**; `null` for `MANUAL` and `BLOCKED`. Text values are verbatim transcript segment text — never a paraphrase, never generated. |
+| `reason` | One sentence, safe to show a user, saying why the field is not written. Non-empty whenever `state` is not `SUPPORTED`; `null` when it is. |
+| `evidence_segment_ids` | Segment ids from `evidence_links` → `transcript_segments`, resolvable via `GET /transcript` or `GET /insights`. **Non-empty on every `SUPPORTED` field** — that is the invariant. On `MANUAL` it shows what was found *instead* (e.g. the segment where the rep quoted a price) and is never proof of the value. On `BLOCKED` it is normally `[]`, which is the honest answer for an absence, not a missing value. |
+
+### The three states, and how they are derived
+
+| State | Derivation |
+|---|---|
+| `BLOCKED` | The dimension the field depends on is not `proven` on the latest analysis run — absent, `weak` (mentioned but below the evidence threshold), or **refused** by the evidence gate (a refused claim never becomes an insight, so it reads as absent). Derived from the same `signal_pips` the call list's `signal_pips` and the deal timeline's `dimension_states` use, so the CRM panel can never disagree with the rest of the API. |
+| `MANUAL` | The gate passed (or the field has none) but no customer-attributable value could be resolved from stored transcript text. A human decides; `reason` says what was found instead. |
+| `SUPPORTED` | A value was resolved out of stored segments, and those segment ids are returned with it. |
+
+### The fields
+
+| Field | Gate dimension | Written when | Value |
+|---|---|---|---|
+| `call_note_why_they_buy` | `pain_identified` | the customer described a problem | The customer's words, verbatim from the segment that established the dimension. |
+| `call_note_business_impact` | `business_impact_identified` | the customer quantified the cost | Same, for the quantified-pain segment. |
+| `deal_close_date` | `timeline_identified` | the customer said an actual calendar date | The date, verbatim. A relative phrase ("next week") is `MANUAL` — converting it to a date is a judgement, and this endpoint makes none. |
+| `deal_amount` | *(none)* | never | Always `MANUAL`: there is no "price agreed" dimension, because a price the rep quoted is not a price the customer accepted. Any figure the call did contain is quoted verbatim in `reason` and cited in `evidence_segment_ids`. |
+| `contact_is_decision_maker` | `decision_maker_identified` | the customer said who decides | `true`. |
+| `contact_is_economic_buyer` | `economic_buyer_identified` | the customer said who owns the budget | `true`. |
+| `log_completed_meeting` | `next_meeting_committed` | the customer committed to a next meeting | `true`. |
+
+No score, probability, or confidence number appears anywhere in this payload — the same rule
+as everywhere else in the API.
+
+## Integrations (Slack)
+
+`POST /integrations/slack` (authenticated) with `{"webhook_url": "https://hooks.slack.com/services/…"}`
+→ `{"configured": true}`. Idempotent: posting again replaces the stored URL.
+
+**The webhook is stored server-side and is never given back.** Do not keep a copy in
+`localStorage`, a query string, or app state — the server is the only place it lives. It is
+returned by no endpoint, appears in no CRM payload, and is never logged. The UI's "connected"
+state comes from:
+
+```
+GET /integrations  →  { "slack": { "configured": true } }
+```
+
+Booleans only, for every provider that can be configured. There is deliberately no read-back
+of the URL, no masked preview, and no "test what is stored" echo.
+
+Validation: the URL must be `https` and its host must be `hooks.slack.com` (configurable via
+`SLACK_WEBHOOK_HOSTS` for a self-hosted Slack-compatible endpoint) and it must have a path.
+Anything else is **400 `WEBHOOK_URL_INVALID`** in the standard error envelope, with
+`details.reason` one of `scheme` \| `host` \| `path`. The error never echoes the URL that was
+sent, so a mistyped credential cannot end up in a log or a screenshot of the response.
+
 ## Processing events (GAP-BE-007)
 
 `EventOut.stage` uses CallStatus vocabulary: `CREATED`, `UPLOADING`, `QUEUED`, `TRANSCRIBING`,

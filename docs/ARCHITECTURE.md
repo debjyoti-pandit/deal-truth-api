@@ -373,6 +373,7 @@ UUID primary keys unless a stable string is required. All tables via Alembic mig
 | `transcript_chunks` | call_id, start_segment_id, end_segment_id, text, embedding vector(1024) |
 | `processing_events` | call_id, stage, state, attempt, error_code, message, details JSONB |
 | `share_links` | call_id, token_hash (never plaintext), expires_at, revoked_at |
+| `integration_settings` | provider (unique), secret (**deferred** column — the Slack webhook URL), created_at, updated_at — server-side credentials for outbound integrations (migration `0007_integration_settings`). Unlike a share token this cannot be hashed (the webhook must be replayed verbatim), so containment is the guarantee: `GET /api/v1/integrations` selects `provider` only, and no endpoint ever returns the secret |
 | `tracked_terms` | call or org scope, type, value, aliases JSONB |
 
 Insight types: `CUSTOMER_FACT`, `BUYING_SIGNAL`, `OBJECTION`, `COMMITMENT`, `DEAL_RISK`,
@@ -432,6 +433,8 @@ speaker role before emitting and cites only segments it just read. Refusals aris
 | Search | `GET /api/v1/search?q=` — ranked Postgres FTS (`websearch_to_tsquery` + `ts_rank`) with filters `status`, `from`/`to`, `call_id`, `speaker_role`, `types`; SQLite ILIKE in tests. See [search.md](search.md) |
 | Recommendations | `GET /api/v1/recommendations` — suggested explorations from latest-run insights on finished calls |
 | Follow-up | `POST .../follow-up` |
+| CRM preview | `GET /api/v1/calls/{call_id}/crm-preview` → `{call_id, fields[]}` — the CRM payload with per-field provenance. `SUPPORTED` carries the value **and** the `evidence_segment_ids` that back it; `MANUAL` and `BLOCKED` carry a `reason` and a null value. `BLOCKED` is **derived** from `signal_pips`, not hand-listed: the dimension the field depends on is absent, weak, or was refused by the evidence gate. No readiness gate (like `/refusals`) |
+| Integrations | `POST /api/v1/integrations/slack` `{webhook_url}` → `{configured: true}` — https `hooks.slack.com` only (`SLACK_WEBHOOK_HOSTS`), otherwise **400 `WEBHOOK_URL_INVALID`**. `GET /api/v1/integrations` → `{slack: {configured: bool}}`, booleans only. The webhook is stored server-side and is returned by nothing |
 | Sharing | `POST .../share` (URL uses `PUBLIC_WEB_BASE_URL`), `DELETE .../share/{share_id}`, `GET /api/v1/shared/{token}` → `{ report, transcript }` |
 | Export | `GET .../export/json`, `GET .../export/markdown` |
 | Webhooks | `POST /api/v1/webhooks/pyai/transcription` |
@@ -451,7 +454,7 @@ and committed sample payloads (`docs/examples/*.shipped.json`) are in
 - **Storage:** `BLOB_UPLOAD_FAILED`, `BLOB_DOWNLOAD_FAILED`, `BLOB_NOT_FOUND`, `INVALID_AUDIO`, `AUDIO_TOO_LARGE`
 - **Analysis:** `SPEAKER_ROLE_UNRESOLVED`, `EVIDENCE_SEGMENT_MISSING`, `EVIDENCE_WRONG_SPEAKER`, `EVIDENCE_UNSUPPORTED`, `ANALYSIS_SCHEMA_INVALID`, `EMBEDDING_FAILED`
 - **Database:** `DATABASE_WRITE_FAILED`, `MIGRATION_REQUIRED`
-- **Request:** `NOT_FOUND`, `CONFLICT`, `NOT_READY` (409, retryable — report/exports/shared before `SHIPPED`/`PARTIAL`), `UNAUTHORIZED`, `FORBIDDEN`, `INVALID_SOURCE_URL`, `SHARE_TOKEN_INVALID`, `SIGNED_URL_INVALID`, `CALL_CANCELLED`
+- **Request:** `NOT_FOUND`, `CONFLICT`, `NOT_READY` (409, retryable — report/exports/shared before `SHIPPED`/`PARTIAL`), `UNAUTHORIZED`, `FORBIDDEN`, `INVALID_SOURCE_URL`, `SHARE_TOKEN_INVALID`, `SIGNED_URL_INVALID`, `CALL_CANCELLED`, `WEBHOOK_URL_INVALID` (400 — the webhook URL is not an https Slack webhook; the message and `details` never echo the URL that was sent)
 
 ---
 
@@ -466,6 +469,11 @@ and committed sample payloads (`docs/examples/*.shipped.json`) are in
 - Share tokens stored **hashed**, expiring, revocable.
 - Signed audio URLs expire.
 - Logs must not contain full transcripts or credentials (redaction built into logging).
+- The Slack webhook URL is a bearer credential and is stored **server-side only**
+  (`integration_settings.secret`, a deferred column) — never in browser storage, never in a
+  response body, never in a CRM/HubSpot payload, never in a log line, and never in an error
+  message. `GET /api/v1/integrations` reports booleans by selecting `provider` alone, so the
+  secret is not fetched from the database on any client-reachable read path.
 
 ---
 

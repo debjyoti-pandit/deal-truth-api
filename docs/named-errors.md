@@ -30,6 +30,12 @@ Every API error uses:
 
 `SPEAKER_ROLE_UNRESOLVED`, `EVIDENCE_SEGMENT_MISSING`, `EVIDENCE_WRONG_SPEAKER`, `EVIDENCE_UNSUPPORTED`, `ANALYSIS_SCHEMA_INVALID`, `EMBEDDING_FAILED`
 
+## Integrations
+
+`WEBHOOK_URL_INVALID` (400, `failure_kind: USER_INPUT`) — the Slack webhook URL was not an
+`https://hooks.slack.com/...` URL with a non-empty path. The rejected URL is never echoed in
+the message, the details, or any log line.
+
 ## Database
 
 `DATABASE_WRITE_FAILED`, `MIGRATION_REQUIRED`

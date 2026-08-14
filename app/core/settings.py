@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     ml_service_api_key: str = ""
     ml_generation_enabled: bool = True
 
+    # Hosts a Slack incoming-webhook URL may point at. An allowlist, not a hint: a URL whose
+    # host is not in here is rejected with `WEBHOOK_URL_INVALID`, as is any non-https URL.
+    # The webhook itself is never a setting — it is user data and lives in the database.
+    slack_webhook_hosts: str = "hooks.slack.com"
+
     signed_url_ttl_seconds: int = 900
     signed_url_secret: str = ""
 
@@ -108,6 +113,10 @@ class Settings(BaseSettings):
             if extra not in origins:
                 origins.append(extra)
         return origins
+
+    @property
+    def slack_webhook_host_set(self) -> frozenset[str]:
+        return frozenset(h.strip().lower() for h in self.slack_webhook_hosts.split(",") if h.strip())
 
     @property
     def allowed_mime_set(self) -> frozenset[str]:
