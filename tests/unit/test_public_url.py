@@ -64,17 +64,16 @@ def test_resolve_skips_ngrok_when_disabled() -> None:
 
 def test_resolved_ml_service_base_url_prefers_explicit() -> None:
     settings = Settings(
-        ml_service_base_url="http://host.docker.internal:8081",
-        ml_ngrok_domain="deal-truth-ml-ngrok.ngrok-free.app",
+        ml_service_base_url="https://deal-truth-ml.onrender.com/",
         signed_url_secret="unit-test-signed-url-secret",
     )
-    assert settings.resolved_ml_service_base_url == "http://host.docker.internal:8081"
+    assert settings.resolved_ml_service_base_url == "https://deal-truth-ml.onrender.com"
 
 
-def test_resolved_ml_service_base_url_falls_back_to_app_ngrok() -> None:
+def test_resolved_ml_service_base_url_falls_back_to_local_dev() -> None:
+    # No ngrok in the chain anymore: explicit URL or the local wrangler dev port.
     settings = Settings(
         ml_service_base_url="",
-        ml_ngrok_domain="deal-truth-ml-ngrok.ngrok-free.app",
         signed_url_secret="unit-test-signed-url-secret",
     )
-    assert settings.resolved_ml_service_base_url == "https://deal-truth-ml-ngrok.ngrok-free.app"
+    assert settings.resolved_ml_service_base_url == "http://localhost:8081"

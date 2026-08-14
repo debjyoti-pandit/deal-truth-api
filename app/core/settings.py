@@ -70,7 +70,6 @@ class Settings(BaseSettings):
     pyai_poll_deadline_seconds: float = 1800.0
 
     ml_service_base_url: str = "http://localhost:8081"
-    ml_ngrok_domain: str = "deal-truth-ml-ngrok.ngrok-free.app"
     ml_service_api_key: str = ""
     ml_generation_enabled: bool = True
     # Per-request item cap when batching to the Worker. Must not exceed the Worker's
@@ -138,14 +137,11 @@ class Settings(BaseSettings):
 
     @property
     def resolved_ml_service_base_url(self) -> str:
+        """`ML_SERVICE_BASE_URL`, else the local dev Worker. The ngrok fallback is gone:
+        the ML service is deployed (https://deal-truth-ml.onrender.com), so a tunnel is no
+        longer part of the resolution chain — point the env var wherever the service is."""
         raw = self.ml_service_base_url.strip().rstrip("/")
-        if raw:
-            return raw
-        domain = self.ml_ngrok_domain.strip().removeprefix("https://").removeprefix("http://")
-        host = domain.split("/")[0].lower() if domain else ""
-        if host and host not in {"localhost", "127.0.0.1"}:
-            return f"https://{host}"
-        return "http://localhost:8081"
+        return raw if raw else "http://localhost:8081"
 
     @property
     def hmac_secret(self) -> bytes:

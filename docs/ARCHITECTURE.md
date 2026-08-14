@@ -281,7 +281,8 @@ Responses are re-keyed by that id on this side, not read positionally.
 
 Client behavior (`app/ml/__init__.py`):
 
-- Base URL resolution: `ML_SERVICE_BASE_URL` → `https://{ML_NGROK_DOMAIN}` → `http://localhost:8081`.
+- Base URL resolution: `ML_SERVICE_BASE_URL` → `http://localhost:8081` (local wrangler dev).
+  Deployed service: `https://deal-truth-ml.onrender.com`. The ngrok fallback is gone.
 - Bearer `ML_SERVICE_API_KEY` (matches the Worker's `INTERNAL_API_TOKEN`); `ngrok-skip-browser-warning`
   header added automatically for ngrok hosts.
 - Batching: classify/emotions/embeddings are chunked client-side to `ML_MAX_BATCH_SIZE`
@@ -299,7 +300,7 @@ Client behavior (`app/ml/__init__.py`):
   the service is down and returns `no_index` (200) when a call has no chunks. ML outage is never
   presented as a deal judgment.
 
-Env vars: `ML_SERVICE_BASE_URL`, `ML_NGROK_DOMAIN`, `ML_SERVICE_API_KEY`, `ML_GENERATION_ENABLED`.
+Env vars: `ML_SERVICE_BASE_URL`, `ML_SERVICE_API_KEY`, `ML_GENERATION_ENABLED`, `ML_MAX_BATCH_SIZE`.
 
 #### Emotion is not buying intent
 

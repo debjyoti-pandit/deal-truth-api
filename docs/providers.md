@@ -16,7 +16,8 @@ Webhook verification uses HMAC over the **raw request body** (`X-PyAI-Signature`
 
 ## DealTruthMLClient details
 
-- Base URL: `ML_SERVICE_BASE_URL`, else `https://{ML_NGROK_DOMAIN}`, else `http://localhost:8081`.
+- Base URL: `ML_SERVICE_BASE_URL`, else `http://localhost:8081` (local wrangler dev). Deployed:
+  `https://deal-truth-ml.onrender.com`. No ngrok fallback.
 - Auth: Bearer `ML_SERVICE_API_KEY` (Worker `INTERNAL_API_TOKEN`); adds `ngrok-skip-browser-warning` for ngrok hosts.
 - Batching: the client chunks classify/emotions/embeddings to `ML_MAX_BATCH_SIZE` items per
   request (default 32 — must not exceed the Worker's `MAX_BATCH_SIZE`, advertised on its
