@@ -320,7 +320,8 @@ UUID primary keys unless a stable string is required. All tables via Alembic mig
 
 | Table | Purpose / key fields |
 |---|---|
-| `calls` | public_call_id, title, customer_name, rep_name, call_direction, source_type, recording_mode (mono/stereo), status, terminal_outcome, failure_kind, duration_ms, language, timestamps |
+| `calls` | public_call_id, title, customer_name, rep_name, call_direction, source_type, recording_mode (mono/stereo), status, terminal_outcome, failure_kind, duration_ms, language, timestamps, nullable `deal_id` |
+| `deals` | account_name, primary_contact — groups calls into one account so a deal can be read across calls (migration `0006_deals`). Matched case-insensitively on `customer_name` at call creation; deliberately naive, correctable by a rep |
 | `audio_assets` | call_id, bucket, object_key, original_filename, content_type, size_bytes, checksum |
 | `speakers` | call_id, provider_speaker_id, role (seller/customer/unknown), display_name, confidence, manually_overridden |
 | `transcript_segments` | call_id, provider_segment_id, speaker_id, start_ms, end_ms, text, sequence_number, metadata JSONB; Postgres `text_search` tsvector (generated) + GIN; trigram GIN on `text` |
@@ -383,6 +384,7 @@ speaker role before emitting and cites only segments it just read. Refusals aris
 | Health | `GET /health/live`, `GET /health/ready` (readiness includes `workers` — Celery ping count — outside test env) |
 | Calls | `POST /api/v1/calls`, `GET /api/v1/calls` (summaries include `rep_name`), `GET /api/v1/calls/{call_id}`, `DELETE /api/v1/calls/{call_id}` |
 | Dashboard | `GET /api/v1/calls/overview` — status counts, latest-run insight counts, `recent_calls` (registered **before** `/calls/{call_id}` so the literal path wins) |
+| Deals | `GET /api/v1/deals/{deal_id}` — `{account_name, primary_contact, call_count, span_days, calls[], deltas[]}`. Each call carries `dimension_states` (the 8 observable dimensions); `deltas` is a pure Python diff of consecutive states, surfacing a dimension that was `proven` on the previous call and has since gone. **No health score** — counting proven dimensions is observable, a 0–100 number is not |
 | Audio | `POST .../audio` (upload), `POST .../source-url` (SSRF-safe fetch), `GET .../audio` (Range streaming), `GET .../audio-url` (mints `{url, expires_at}` for `<audio src>`), `GET /api/v1/public/audio/{asset_id}` (signed) |
 | Processing | `POST .../process` (**400 `INVALID_AUDIO`** without an audio asset; logs a `QUEUED` event), `POST .../reanalyze`, `POST .../cancel`, `GET .../events`, `GET .../stream` (SSE) |
 | Transcript | `GET .../transcript` (empty 200 before transcription), `PATCH .../speakers` (role swap → invalidate customer-only insights → enqueue reanalysis, preserve transcript) |

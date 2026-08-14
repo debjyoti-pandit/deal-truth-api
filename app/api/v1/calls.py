@@ -11,17 +11,21 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import AppContainer, get_container, get_sync_session, require_auth
+from app.api.v1.deals import attach_to_deal
 from app.core.enums import (
     TERMINAL_CALL_STATUSES,
     CallStatus,
     EventState,
+    InsightType,
     TrackedTermType,
 )
 from app.core.errors import ConflictError, InvalidAudio, NotFoundError
+from app.intelligence.dimensions import signal_pips
+from app.models.analysis import AnalysisRun, Insight
 from app.models.call import AudioAsset, Call
 from app.models.events import ProcessingEvent
 from app.models.terms import TrackedTerm
@@ -50,7 +54,11 @@ def _get_call(session: Session, call_id: UUID) -> Call:
     return call
 
 
-def _summary(call: Call) -> CallSummary:
+def _summary(
+    call: Call,
+    pips: dict[str, str] | None = None,
+    top_risk: str | None = None,
+) -> CallSummary:
     return CallSummary(
         id=call.id,
         public_call_id=call.public_call_id,
@@ -62,7 +70,57 @@ def _summary(call: Call) -> CallSummary:
         duration_ms=call.duration_ms,
         created_at=call.created_at,
         updated_at=call.updated_at,
+        deal_id=call.deal_id,
+        # Always all eight, even with no analysis run — every dimension then reads `missing`,
+        # which is accurate rather than absent.
+        signal_pips=pips if pips is not None else signal_pips([]),
+        top_risk=top_risk,
     )
+
+
+def _pips_and_risk_by_call(session: Session, call_ids: list[UUID]) -> dict[UUID, tuple[dict[str, str], str | None]]:
+    """Latest-run dimension states and top risk for many calls, in a fixed number of queries.
+
+    Reuses the latest-run-only aggregation shape `GET /calls/overview` already relies on, so
+    the list endpoint does not fan out one query per call.
+    """
+    if not call_ids:
+        return {}
+    latest_version = (
+        select(AnalysisRun.call_id, func.max(AnalysisRun.version).label("version"))
+        .where(AnalysisRun.call_id.in_(call_ids))
+        .group_by(AnalysisRun.call_id)
+        .subquery()
+    )
+    latest_runs = session.execute(
+        select(AnalysisRun.id, AnalysisRun.call_id).join(
+            latest_version,
+            (AnalysisRun.call_id == latest_version.c.call_id) & (AnalysisRun.version == latest_version.c.version),
+        )
+    ).all()
+    call_by_run = {run_id: call_id for run_id, call_id in latest_runs}
+    if not call_by_run:
+        return {}
+    rows = session.scalars(
+        select(Insight).where(
+            Insight.analysis_run_id.in_(list(call_by_run)),
+            Insight.type.in_([InsightType.QUALIFICATION_SIGNAL, InsightType.DEAL_RISK]),
+        )
+    ).all()
+    signals: dict[UUID, list[Insight]] = {}
+    risks: dict[UUID, list[Insight]] = {}
+    for row in rows:
+        call_id = call_by_run[row.analysis_run_id]
+        bucket = signals if row.type == InsightType.QUALIFICATION_SIGNAL else risks
+        bucket.setdefault(call_id, []).append(row)
+    out: dict[UUID, tuple[dict[str, str], str | None]] = {}
+    for call_id in call_by_run.values():
+        call_risks = sorted(
+            risks.get(call_id, []),
+            key=lambda r: ({"critical": 0, "high": 1, "medium": 2, "low": 3}.get(r.severity or "", 9), -r.confidence),
+        )
+        out[call_id] = (signal_pips(signals.get(call_id, [])), call_risks[0].title if call_risks else None)
+    return out
 
 
 def _detail(call: Call) -> CallDetail:
@@ -102,6 +160,9 @@ def create_call(
     )
     session.add(call)
     session.flush()
+    # Attach to an account by name so a sequence of calls can be read as one deal. Naive by
+    # design — a rep can correct it later; getting it wrong costs a grouping, not a claim.
+    attach_to_deal(session, call)
     for name in body.tracked_competitors:
         session.add(TrackedTerm(call_id=call.id, type=TrackedTermType.COMPETITOR, value=name, aliases=[]))
     for name in body.tracked_keywords:
@@ -113,8 +174,9 @@ def create_call(
 
 @router.get("/calls")
 def list_calls(session: Session = Depends(get_sync_session)) -> list[CallSummary]:
-    rows = session.scalars(select(Call).order_by(Call.created_at.desc())).all()
-    return [_summary(c) for c in rows]
+    rows = list(session.scalars(select(Call).order_by(Call.created_at.desc())).all())
+    derived = _pips_and_risk_by_call(session, [c.id for c in rows])
+    return [_summary(c, *derived.get(c.id, (None, None))) for c in rows]
 
 
 # Registered before /calls/{call_id} so the literal path is not parsed as a UUID.
@@ -288,6 +350,16 @@ def list_events(call_id: UUID, session: Session = Depends(get_sync_session)) -> 
     ]
 
 
+# SSE stream tuning (API-6). Module-level so tests can compress the clock instead of
+# waiting out a real stream. Production: a keepalive comment every 10s, DB polled 4x a
+# second, and the stream held open for 120s (transcription regularly exceeds 30s).
+SSE_POLL_INTERVAL_SECONDS = 0.25
+SSE_KEEPALIVE_INTERVAL_SECONDS = 10.0
+SSE_IDLE_BUDGET_SECONDS = 120.0
+# Guards against a keepalive being skipped by float accumulation error.
+_SSE_CLOCK_EPSILON = 1e-9
+
+
 @router.get("/calls/{call_id}/stream")
 async def stream_events(
     call_id: UUID,
@@ -297,15 +369,20 @@ async def stream_events(
     factory = __import__("app.db", fromlist=["sync_session_factory"]).sync_session_factory()
 
     async def gen() -> AsyncIterator[str]:
+        # Snapshot the knobs once per stream so tests can patch the module constants.
+        poll_interval = SSE_POLL_INTERVAL_SECONDS
+        keepalive_interval = SSE_KEEPALIVE_INTERVAL_SECONDS
+        idle_budget = SSE_IDLE_BUDGET_SECONDS
+
         after: datetime | None = None
         if last_event_id:
             try:
                 after = datetime.fromisoformat(last_event_id.replace("Z", "+00:00"))
             except ValueError:
                 after = None
-        terminal = False
-        idle = 0
-        while not terminal and idle < 120:
+        elapsed = 0.0
+        next_keepalive = keepalive_interval
+        while elapsed < idle_budget:
             with factory() as session:
                 call = session.get(Call, call_id)
                 if call is None:
@@ -331,10 +408,34 @@ async def stream_events(
                     yield f"id: {eid}\nevent: processing\ndata: {json.dumps(payload)}\n\n"
                 if CallStatus(call.status) in TERMINAL_CALL_STATUSES:
                     yield f"id: terminal\nevent: terminal\ndata: {json.dumps({'status': call.status.value})}\n\n"
-                    terminal = True
-                    break
-            idle += 1
-            await asyncio.sleep(0.25)
+                    return
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
+            if keepalive_interval > 0:
+                while elapsed + _SSE_CLOCK_EPSILON >= next_keepalive:
+                    # Comment frame: proxies and browsers otherwise read a quiet
+                    # transcription as a dead connection.
+                    yield ": keepalive\n\n"
+                    next_keepalive += keepalive_interval
+
+        # Budget spent without reaching a terminal status. Name the current status and
+        # tell the client to reconnect, rather than closing silently and looking hung.
+        with factory() as session:
+            call = session.get(Call, call_id)
+            if call is None:
+                yield 'event: error\ndata: {"error":"not_found"}\n\n'
+                return
+            status = call.status.value
+        timeout_payload = {
+            "call_id": str(call_id),
+            "status": status,
+            "reason": "idle_timeout",
+            "idle_seconds": idle_budget,
+            "reconnect": True,
+        }
+        # Carry the last real event id so a reconnect resumes instead of replaying.
+        id_line = f"id: {after.isoformat()}\n" if after is not None else ""
+        yield f"{id_line}event: timeout\ndata: {json.dumps(timeout_payload)}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 

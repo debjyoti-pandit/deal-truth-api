@@ -86,9 +86,22 @@ retrying | skipped`. `POST /process` records a `QUEUED` event.
 - `event: terminal` — `{ "status": "SHIPPED" | "PARTIAL" | "FAILED" | "CANCELLED" }`, then the
   stream closes.
 - `event: error` — `{ "error": "not_found" }`.
+- `: keepalive` — a bare SSE comment every **10s**, so a quiet stage (transcription can run
+  well past a minute without emitting) is not mistaken for a dead connection by the browser
+  or an intermediate proxy. Comments carry no data; `EventSource` ignores them and no
+  `onmessage`/listener fires. Nothing to handle client-side — just do not treat silence
+  between them as liveness.
+- `event: timeout` — the stream held itself open for its full budget without the call
+  reaching a terminal state, and is now closing:
+  `{ call_id, status, reason: "idle_timeout", idle_seconds: 120, reconnect: true }`.
+  `status` is the call's status at the moment of close (e.g. `TRANSCRIBING`) — the work is
+  still in flight, this is not a failure. Reconnect to keep following it; the frame's `id:`
+  is the last real event's `created_at`, so an `EventSource` reconnect resumes via
+  `Last-Event-ID` instead of replaying the whole history. Falling back to polling `/events`
+  + `/calls/{id}` also works.
 - SSE `id:` is the event `created_at` ISO timestamp; reconnect with `Last-Event-ID` resumes.
-- The stream idles out after ~30s without a terminal state; poll `/events` + `/calls/{id}` as
-  fallback.
+- Budget is **120s** from stream open (was ~30s). Exactly one of `terminal`, `timeout`, or
+  `error` ends any stream, so the client is never left guessing why it went quiet.
 - When `AUTH_MODE=api_key`, `/stream` also accepts `?api_key=<key>` because `EventSource`
   cannot send headers. All other endpoints require the header.
 

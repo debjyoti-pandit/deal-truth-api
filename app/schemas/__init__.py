@@ -39,6 +39,15 @@ class CallSummary(BaseModel):
     duration_ms: int | None
     created_at: datetime
     updated_at: datetime
+    deal_id: UUID | None = None
+    # The 8 observable deal-signal dimensions, so the workspace list renders in one request
+    # instead of fetching every report. These are observed states (proven | blocked | weak |
+    # missing), never a score — `docs/frontend-contract.md` refuses `biggest_risk` here for
+    # the same reason, and this respects that line.
+    signal_pips: dict[str, str] = Field(default_factory=dict)
+    # The highest-severity DEAL_RISK title on the latest run, or null. A quotation of an
+    # existing finding, not a new judgement.
+    top_risk: str | None = None
 
 
 class CallDetail(CallSummary):

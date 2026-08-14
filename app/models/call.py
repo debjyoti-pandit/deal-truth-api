@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
@@ -32,11 +32,31 @@ if TYPE_CHECKING:
 JSONType = JSON().with_variant(JSONB(), "postgresql")
 
 
+class Deal(Base):
+    """An account, so a sequence of calls can be read as one deal.
+
+    Calls are standalone otherwise, which means the question a sales manager actually asks —
+    "is this deal getting better or worse?" — cannot be answered at all. Matching is
+    deliberately naive (case-insensitive `customer_name`); a rep can correct it later.
+    """
+
+    __tablename__ = "deals"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    account_name: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
+    primary_contact: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = created_at_col()
+
+    calls: Mapped[list[Call]] = relationship(back_populates="deal")
+
+
 class Call(Base):
     __tablename__ = "calls"
+    __table_args__ = (Index("ix_calls_deal", "deal_id", "created_at"),)
 
     id: Mapped[uuid.UUID] = uuid_pk()
     public_call_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    deal_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("deals.id"), nullable=True)
     title: Mapped[str | None] = mapped_column(String(512), nullable=True)
     customer_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     rep_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
@@ -77,6 +97,7 @@ class Call(Base):
     updated_at: Mapped[datetime] = updated_at_col()
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    deal: Mapped[Deal | None] = relationship(back_populates="calls")
     audio_assets: Mapped[list[AudioAsset]] = relationship(back_populates="call", cascade="all, delete-orphan")
     speakers: Mapped[list[Speaker]] = relationship(back_populates="call", cascade="all, delete-orphan")
     transcript_segments: Mapped[list[TranscriptSegment]] = relationship(
