@@ -284,7 +284,10 @@ Client behavior (`app/ml/__init__.py`):
 - Base URL resolution: `ML_SERVICE_BASE_URL` → `https://{ML_NGROK_DOMAIN}` → `http://localhost:8081`.
 - Bearer `ML_SERVICE_API_KEY` (matches the Worker's `INTERNAL_API_TOKEN`); `ngrok-skip-browser-warning`
   header added automatically for ngrok hosts.
-- 300s read timeout — the Worker chunks classify/emotions batches internally inside one HTTP request.
+- Batching: classify/emotions/embeddings are chunked client-side to `ML_MAX_BATCH_SIZE`
+  items per request (default 32, matching the Worker's `MAX_BATCH_SIZE`) and reassembled
+  in input order — an hour-long call is many bounded requests, never one 413. The 300s
+  read timeout applies per request; the Worker further sub-chunks LLM prompts internally.
 - `candidate_labels` is omitted, so `/v1/classify` scores against the Worker's own 24-label
   catalogue (`GET /v1/sales-labels`), which carries real NLI hypotheses and per-label thresholds
   and is a superset of `SALES_LABELS`. The route returns only labels that cleared their threshold.

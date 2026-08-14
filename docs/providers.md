@@ -18,7 +18,11 @@ Webhook verification uses HMAC over the **raw request body** (`X-PyAI-Signature`
 
 - Base URL: `ML_SERVICE_BASE_URL`, else `https://{ML_NGROK_DOMAIN}`, else `http://localhost:8081`.
 - Auth: Bearer `ML_SERVICE_API_KEY` (Worker `INTERNAL_API_TOKEN`); adds `ngrok-skip-browser-warning` for ngrok hosts.
-- 300s read timeout: the Worker chunks classify/emotions internally within one HTTP request.
+- Batching: the client chunks classify/emotions/embeddings to `ML_MAX_BATCH_SIZE` items per
+  request (default 32 — must not exceed the Worker's `MAX_BATCH_SIZE`, advertised on its
+  `/health/ready`) and reassembles results in input order, so an hour-long call is many
+  bounded requests rather than one 413. The 300s read timeout applies per request. Any
+  chunk failing raises the same named `ML_*` error a single failing request always did.
 - Batches are id-keyed (`{"items": [{"id": "0", "text": …}]}`) with positional ids. `/v1/emotions` rejects duplicate ids with `400 INVALID_REQUEST`; responses are re-keyed by id here rather than read positionally, so a reordered response cannot hand one segment another segment's scores.
 - `/v1/classify` is called **without** `candidate_labels`, so the Worker's 24-label catalogue (`GET /v1/sales-labels`) applies its own hypotheses and per-label thresholds. It returns only labels that cleared their threshold; the API's `LABEL_THRESHOLD` still gates extraction on top.
 - Worker label slugs (`pain_point`) map back to extractor keys (`pain point`) via `canonical_sales_label`, which treats `-` and `_` identically (`out_of_scope_request` → `out-of-scope request`).

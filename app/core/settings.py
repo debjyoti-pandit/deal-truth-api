@@ -65,12 +65,18 @@ class Settings(BaseSettings):
     pyai_recap_pack_id: str = "sales_outbound"
     pyai_audio_input_mode: AudioInputMode = AudioInputMode.AUDIO_URL
     pyai_poll_interval_seconds: float = 5.0
-    pyai_poll_deadline_seconds: float = 600.0
+    # A one-hour recording can take PyAI well over ten minutes to transcribe; the old
+    # 600s default turned a long call into PYAI_JOB_TIMEOUT.
+    pyai_poll_deadline_seconds: float = 1800.0
 
     ml_service_base_url: str = "http://localhost:8081"
     ml_ngrok_domain: str = "deal-truth-ml-ngrok.ngrok-free.app"
     ml_service_api_key: str = ""
     ml_generation_enabled: bool = True
+    # Per-request item cap when batching to the Worker. Must not exceed the Worker's
+    # MAX_BATCH_SIZE (default 32, advertised on its /health/ready). The client chunks to
+    # this size, so call length is never bounded by it.
+    ml_max_batch_size: int = 32
 
     # Hosts a Slack incoming-webhook URL may point at. An allowlist, not a hint: a URL whose
     # host is not in here is rejected with `WEBHOOK_URL_INVALID`, as is any non-https URL.

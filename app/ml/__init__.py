@@ -318,31 +318,52 @@ class DealTruthMLClient:
         logger.debug("ml_ok path=%s status=%s", path, response.status_code)
         return payload  # type: ignore[no-any-return]
 
+    def _batched_rows(
+        self, path: str, texts: Sequence[str], extra_body: dict[str, object] | None = None
+    ) -> list[object]:
+        """Post `texts` in chunks of `ml_max_batch_size` and reassemble in input order.
+
+        The Worker rejects any request over its MAX_BATCH_SIZE with 413, and an hour of
+        audio is hundreds of segments — the cap must bound a request, never a call. Ids are
+        positional within each chunk (the shape `_aligned_rows` re-keys on), and the 300s
+        read timeout applies per request, so a long call is many bounded requests rather
+        than one unboundable one. Error semantics are unchanged: any chunk failing raises
+        exactly what a single failing request always did, and the pipeline degrades to
+        PARTIAL the same way.
+        """
+        size = max(1, self._settings.ml_max_batch_size)
+        if len(texts) > size:
+            logger.info("ml_batched path=%s texts=%s requests=%s", path, len(texts), -(-len(texts) // size))
+        rows: list[object] = []
+        for start in range(0, len(texts), size):
+            chunk = texts[start : start + size]
+            body: dict[str, object] = {"items": _request_items(chunk)}
+            if extra_body:
+                body.update(extra_body)
+            payload = self._post(path, body)
+            _log_meta(path, payload)
+            rows.extend(_aligned_rows(payload, len(chunk)))
+        return rows
+
     def classify(self, texts: list[str], labels: list[str] | None = None) -> list[ClassificationResult]:
         logger.info("ml_classify texts=%s", len(texts))
-        body: dict[str, object] = {"items": _request_items(texts)}
+        extra: dict[str, object] | None = None
         if labels:
             # Omitted entirely when the caller has no opinion, so the Worker's own
             # 24-label catalogue (real NLI hypotheses, per-label thresholds) is used. It is
             # a strict superset of SALES_LABELS.
-            body["candidate_labels"] = [{"id": sales_label_slug(label), "hypothesis": label} for label in labels]
-        payload = self._post("/v1/classify", body)
-        _log_meta("/v1/classify", payload)
-        return [_parse_classification(item) for item in _aligned_rows(payload, len(texts))]
+            extra = {"candidate_labels": [{"id": sales_label_slug(label), "hypothesis": label} for label in labels]}
+        return [_parse_classification(item) for item in self._batched_rows("/v1/classify", texts, extra)]
 
     def emotions(self, texts: list[str]) -> list[EmotionAxes]:
         logger.info("ml_emotions texts=%s", len(texts))
         # No threshold/top_k: the Worker defaults (0.2 / 6) are the shipped contract.
-        payload = self._post("/v1/emotions", {"items": _request_items(texts)})
-        _log_meta("/v1/emotions", payload)
-        return [_parse_emotion_axes(item) for item in _aligned_rows(payload, len(texts))]
+        return [_parse_emotion_axes(item) for item in self._batched_rows("/v1/emotions", texts)]
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         logger.info("ml_embed texts=%s", len(texts))
-        payload = self._post("/v1/embeddings", {"items": _request_items(texts), "normalize": True})
-        _log_meta("/v1/embeddings", payload)
         vectors: list[list[float]] = []
-        for item in _aligned_rows(payload, len(texts)):
+        for item in self._batched_rows("/v1/embeddings", texts, {"normalize": True}):
             if isinstance(item, dict):
                 vec = item.get("vector", item.get("embedding"))
             else:
