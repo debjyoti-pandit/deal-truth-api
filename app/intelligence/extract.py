@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from uuid import UUID
 
 from app.core.enums import EvidenceStatus, InsightType, SpeakerRole
 from app.intelligence.domain import CandidateInsight, SegmentView
+from app.ml import EmotionAxes
 from app.providers.normalized import NormalizedRecap
 
 LABEL_THRESHOLD = 0.55
@@ -94,25 +96,42 @@ def extract_customer_truth(segments: Sequence[SegmentView]) -> list[CandidateIns
     return out
 
 
-def extract_sentiment(segments: Sequence[SegmentView]) -> list[CandidateInsight]:
+def extract_sentiment(
+    segments: Sequence[SegmentView],
+    axes_by_segment: Mapping[UUID, EmotionAxes] | None = None,
+) -> list[CandidateInsight]:
+    """Sentiment points carrying `/v1/emotions`' three axes, still separate.
+
+    `emotion`, `buying_intent` and `deal_signals` land on the payload as three named
+    arrays and are never merged: `neutral` belongs to two of them and means something
+    different on each. `payload.unavailable.<axis>` marks an axis that was never scored, so
+    a reader can tell "the customer was flat" from "we never got an answer". A segment with
+    no axis scored at all yields no sentiment point — rendering that gap would turn an
+    inference failure into a finding about the customer.
+    """
+    lookup = axes_by_segment or {}
     out: list[CandidateInsight] = []
     for seg in customer_segments(segments):
-        grouped = {
-            "positive": max(0.0, seg.valence) if seg.valence > 0 else 0.0,
-            "negative": max(0.0, -seg.valence) if seg.valence < 0 else 0.0,
-            "neutral": 1.0 - min(1.0, abs(seg.valence)),
-            "valence": seg.valence,
-            "raw": seg.emotions,
-        }
+        axes = lookup.get(seg.id)
+        if axes is None or not axes.any_available():
+            continue
+        payload: dict[str, object] = {"timestamp_ms": seg.start_ms}
+        payload.update(axes.as_payload())
+        grouped = axes.grouped()
+        if grouped is not None:
+            # Emotion-axis valence roll-up only, and absent entirely when that axis was
+            # never scored rather than reported as a balanced zero.
+            payload["grouped"] = grouped
+        top = axes.top_score()
         out.append(
             CandidateInsight(
                 type=InsightType.SENTIMENT_POINT,
                 title="Customer emotion",
                 summary=seg.text,
-                confidence=max(seg.emotions.values()) if seg.emotions else 0.5,
+                confidence=top if top is not None else 0.5,
                 segment_ids=[seg.id],
                 required_role=SpeakerRole.CUSTOMER,
-                payload={"grouped": grouped, "timestamp_ms": seg.start_ms},
+                payload=payload,
             )
         )
     return out

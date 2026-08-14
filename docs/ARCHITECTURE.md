@@ -9,7 +9,8 @@
 
 **Deal Truth** is an open-source sales-call intelligence product. This repository
 (`deal-truth-api`) is the FastAPI backend and Celery pipeline. The UI lives in
-`deal-truth-web`; hosted ONNX inference lives in `deal-truth-ml`.
+`deal-truth-web`; hosted inference lives in `deal-truth-ml` (a Cloudflare Worker over
+Workers AI — the ONNX design was dropped, see §13).
 
 A user uploads a call recording (or supplies an HTTPS recording URL). The system produces a
 complete, evidence-backed call report: diarized transcript, summaries, deal insights, coaching,
@@ -60,7 +61,7 @@ decision maker, next meeting committed, competitor active, blocker active.
 |---|---|
 | Customer Truth | Only what the **customer** actually said, categorized (pain, requirement, buying signal, blocker, budget, timeline, competition, commitment), each with exact quote + timestamps |
 | Evidence receipts + click-to-play audio | Every insight carries segment IDs and `start_ms`/`end_ms`; UI seeks into original audio (no clip pre-generation) |
-| Buyer emotion timeline | GoEmotions on customer segments → valence timeline. Explicitly **not** buying intent |
+| Buyer emotion timeline | Three separate axes on customer segments (`emotion`, `buying_intent`, `deal_signals`) → emotion-axis valence timeline. Emotion is explicitly **not** buying intent, and the axes are never merged |
 | Buying-intent signals | Observable dimensions, never a probability |
 | Objections + coaching | Zero-shot detection (pricing, security, technical, budget, timing, integration, competition) + deterministic playbook responses |
 | Reality Check | Rep-said vs customer-said mismatches with severity + deterministic reason codes |
@@ -97,7 +98,7 @@ flowchart TD
     API -->|"stream audio, store uploads"| Seaweed[(SeaweedFS)]
     Worker -->|"Hear job via signed audio URL, Recap"| PyAI[PyAI Hear and Recap]
     PyAI -->|"webhook or poll"| API
-    Worker -->|"classify, emotion, embed, generate"| ML[deal-truth-ml hosted ONNX service]
+    Worker -->|"v1 classify, emotions, embeddings, generate"| ML[deal-truth-ml hosted inference service]
     Worker --> PG[(Postgres plus pgvector)]
     API --> PG
 ```
@@ -121,10 +122,10 @@ is *not* required for most features.
 |---|---|
 | STT + diarization + timestamps | PyAI Hear |
 | Call summary / recap | PyAI Recap (pack `sales_outbound`) |
-| Emotions (sales-emotion taxonomy, GoEmotions-style axes) | `@cf/qwen/qwen3-30b-a3b-fp8` fast path (via deal-truth-ml `/emotion`) |
-| Sales semantics (zero-shot labels) | `@cf/qwen/qwen3-30b-a3b-fp8` fast path (via deal-truth-ml `/classify`); slug ids mapped back to display labels by `canonical_sales_label` |
-| Embeddings | `@cf/qwen/qwen3-embedding-0.6b` → **1024-dim** → pgvector `vector(1024)` (migration `0002_embedding_1024`) |
-| Optional generation (polish, Ask synthesis) | Workers AI via deal-truth-ml `/generate` (fast model; quality `@cf/openai/gpt-oss-120b` for `qa_synthesis`) |
+| Emotions (three unmerged axes: `emotion`, `buying_intent`, `deal_signals`) | `@cf/qwen/qwen3-30b-a3b-fp8` fast path (via deal-truth-ml `/v1/emotions`) |
+| Sales semantics (zero-shot labels) | `@cf/qwen/qwen3-30b-a3b-fp8` fast path (via deal-truth-ml `/v1/classify`); slug ids mapped back to display labels by `canonical_sales_label` |
+| Embeddings | `@cf/qwen/qwen3-embedding-0.6b` → **1024-dim** → pgvector `vector(1024)` (migration `0002_embedding_1024`), via `/v1/embeddings` |
+| Optional generation (polish, Ask synthesis) | Workers AI via deal-truth-ml `/v1/generate` (fast model, task `summary_fallback`; quality `@cf/openai/gpt-oss-120b` for `qa_synthesis`, not yet wired) |
 | Talk ratio / monologue / questions / keywords | Deterministic Python |
 | Evidence validation | Deterministic Python |
 | Blob storage | SeaweedFS (S3-compatible API via boto3) |
@@ -259,24 +260,37 @@ Env vars: `PYAI_API_KEY`, `PYAI_BASE_URL`, `PYAI_WEBHOOK_SECRET`, `PYAI_RECAP_EN
 
 ### deal-truth-ml (hosted inference service)
 
-**Confirmed contract** (Cloudflare Worker over Workers AI; backend-compat aliases used by
-`DealTruthMLClient`):
+**Confirmed contract** (Cloudflare Worker over Workers AI). `DealTruthMLClient` calls the
+modern `/v1` routes; the compat aliases (`/classify`, `/emotion`, `/embed`, `/generate`) are
+deprecated on the Worker (`Sunset: Thu, 31 Dec 2026`) and **are no longer called from here**:
 
 ```text
-POST /classify   -> zero-shot sales labels (Qwen3 fast path; slug ids like pain_point)
-POST /emotion    -> sales-emotion + buying-intent + deal-signal label scores
-POST /embed      -> 1024-dim embeddings (@cf/qwen/qwen3-embedding-0.6b)
-POST /generate   -> optional generation ({prompt, max_tokens} -> {text})
+POST /v1/classify    {items:[{id,text}], candidate_labels?, threshold?, top_k?}
+                  -> {items:[{id, labels:[{id, score, passed_threshold}]}], model, request_id}
+POST /v1/emotions    {items:[{id,text}], threshold?, top_k?}
+                  -> {items:[{id, emotion:[{label,score}], buying_intent:[…], deal_signals:[…],
+                      unavailable:{emotion,buying_intent,deal_signals}}], model, request_id}
+POST /v1/embeddings  {items:[{id,text}], normalize?} -> {items:[{id, vector, dimension, normalized}]}
+POST /v1/generate    {task, input, max_new_tokens?, temperature?} -> {text, task, model, grounded:false}
 ```
+
+Item ids are positional (`"0"`, `"1"`, …) and must be unique — `/v1/emotions` returns
+`400 INVALID_REQUEST` on a duplicate, because scores are attributed by id and a shared id
+would hand one segment another segment's emotions while still reporting `unavailable: false`.
+Responses are re-keyed by that id on this side, not read positionally.
 
 Client behavior (`app/ml/__init__.py`):
 
 - Base URL resolution: `ML_SERVICE_BASE_URL` → `https://{ML_NGROK_DOMAIN}` → `http://localhost:8081`.
 - Bearer `ML_SERVICE_API_KEY` (matches the Worker's `INTERNAL_API_TOKEN`); `ngrok-skip-browser-warning`
   header added automatically for ngrok hosts.
-- 300s read timeout — the Worker chunks classify/emotion batches internally inside one HTTP request.
+- 300s read timeout — the Worker chunks classify/emotions batches internally inside one HTTP request.
+- `candidate_labels` is omitted, so `/v1/classify` scores against the Worker's own 24-label
+  catalogue (`GET /v1/sales-labels`), which carries real NLI hypotheses and per-label thresholds
+  and is a superset of `SALES_LABELS`. The route returns only labels that cleared their threshold.
 - Worker label slugs (`pain_point`) are mapped back to extractor keys (`pain point`) via
-  `canonical_sales_label`.
+  `canonical_sales_label`, which normalizes `-` and `_` alike so `out_of_scope_request` still
+  resolves to `out-of-scope request`.
 - Degradation: pipeline ML failures become warnings → run ends `PARTIAL` (deterministic analysis
   still ships). `POST .../ask` falls back to lexical retrieval (`retrieval_lexical_fallback`) when
   the service is down and returns `no_index` (200) when a call has no chunks. ML outage is never
@@ -284,13 +298,38 @@ Client behavior (`app/ml/__init__.py`):
 
 Env vars: `ML_SERVICE_BASE_URL`, `ML_NGROK_DOMAIN`, `ML_SERVICE_API_KEY`, `ML_GENERATION_ENABLED`.
 
-Key insight from the design discussion — **GoEmotions is not deal sentiment**:
+#### Emotion is not buying intent
+
+Key insight from the design discussion — **a feeling is not a commercial signal**:
 
 > "This is impressive, but there's no chance we have budget this quarter."
-> Emotion: admiration (positive). Commercial reality: budget blocker, low intent.
+> Emotion: enthusiastic (positive). Commercial reality: budget blocker, low intent.
 
-So every customer segment gets **two parallel analyses**: emotions (GoEmotions) and commercial
-signals (zero-shot), plus deterministic entity rules. They are stored and displayed separately.
+`/v1/emotions` therefore returns **three axes that are never merged and never deduped against
+each other**, and every one of them is always present:
+
+| Axis | Labels |
+|---|---|
+| `emotion` | `enthusiastic`, `interested`, `curious`, `neutral`, `uncertain`, `hesitant`, `concerned`, `frustrated`, `skeptical`, `rejecting` |
+| `buying_intent` | `strong_positive`, `positive`, `neutral`, `weak`, `negative` |
+| `deal_signals` | `pricing_blocker`, `security_blocker`, `budget_blocker`, `competitor_active`, `timeline_present`, `next_step_committed` |
+
+`neutral` is a member of **two** axes and means something different on each, which is why the
+deprecated compat `/emotion` route — which flattened all three into one `labels` array — could
+not represent the canonical case at all.
+
+**`[]` is not `unavailable`.** An empty axis means it *was* scored and nothing was confident (a
+genuinely flat utterance). `unavailable.<axis> == true` means it was never scored, and the empty
+array beside it is **unknown, not neutral**. Axes fail independently. All three land verbatim on
+`SENTIMENT_POINT.payload` as `emotion` / `buying_intent` / `deal_signals` plus the `unavailable`
+object; `payload.grouped` is an emotion-axis-only valence roll-up and is **absent** when that axis
+is unavailable rather than reported as a balanced zero. A customer segment whose every axis is
+unavailable produces **no** sentiment point at all — rendering that gap would turn an inference
+failure into a finding about the customer.
+
+So every customer segment gets **two parallel analyses**: the three emotion axes and commercial
+signals (zero-shot classify), plus deterministic entity rules. They are stored and displayed
+separately.
 
 ### SeaweedFS blob layout
 
@@ -508,9 +547,13 @@ committed, README covers startup + live tests.
   end to end, but only **model-proposed** candidates can fail validation, and the API still
   builds candidates deterministically. Adopting `/v1/analyze-call` is what starts populating
   it — until then the refusal machinery is proven by unit tests, not by live data.
-- ~~Confirm the hosted `deal-truth-ml` endpoint contract~~ — **confirmed** (compat aliases
-  `/classify`, `/emotion`, `/embed`, `/generate`; see §5). Any future drift stays isolated to
-  `DealTruthMLClient`.
+- ~~Confirm the hosted `deal-truth-ml` endpoint contract~~ — **confirmed**, and ~~migrate off the
+  compat aliases~~ — **done**: the client speaks `/v1/classify`, `/v1/emotions`, `/v1/embeddings`
+  and `/v1/generate` (see §5). Any future drift stays isolated to `DealTruthMLClient`.
+- `/v1/rerank` (BGE reranker, would materially improve Ask) and `/v1/analyze-call` are both built
+  on the Worker and still unused here.
+- `/v1/generate` is called with the `summary_fallback` task only. Ask synthesis still uses the
+  same task rather than `qa_synthesis`, so it runs on the fast model.
 - `deal-truth-ml` availability is operational (Cloudflare Workers AI quota / ngrok tunnel);
   the API degrades to `PARTIAL` + lexical Ask when it is down.
 - PyAI Speak for generating synthetic sample calls (mentioned in original design) is optional and not part of P0; `deal-truth-samples` bucket exists for it.
@@ -524,3 +567,7 @@ dashboard overview, Ask degradation modes — lives in
 [frontend-contract.md](frontend-contract.md), with committed sample payloads under
 [examples/](examples/) (regenerate: `uv run python scripts/generate_report_examples.py`).
 Both are served live at `/api/v1/reference`.
+
+> The committed `examples/*.json` still show the pre-`/v1` `SENTIMENT_POINT` payload
+> (`grouped` with a synthesized `neutral`, plus a flattened `raw` map). Re-run the generator
+> to refresh them against the three-axis payload.

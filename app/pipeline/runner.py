@@ -49,7 +49,7 @@ from app.intelligence.extract import (
 )
 from app.intelligence.metrics import compute_metrics
 from app.intelligence.speakers import resolve_speakers
-from app.ml import MLInferenceClient
+from app.ml import EmotionAxes, MLInferenceClient
 from app.models.call import AudioAsset, Call
 from app.models.terms import TrackedTerm
 from app.pipeline.persist import (
@@ -401,29 +401,37 @@ def _analyze(
     texts = [v.text for v in views]
     classifications = _ml_or_warn(deps, call, warnings, "classify", lambda: deps.ml.classify(texts)) if texts else []
     customer_idx = [i for i, v in enumerate(views) if v.speaker_role == SpeakerRole.CUSTOMER]
-    emotions = (
+    emotion_rows = (
         _ml_or_warn(
             deps,
             call,
             warnings,
             "emotion",
-            lambda: deps.ml.emotion([views[i].text for i in customer_idx]),
+            lambda: deps.ml.emotions([views[i].text for i in customer_idx]),
         )
         if customer_idx
         else []
     )
-    emotion_by_index = dict(zip(customer_idx, emotions, strict=False))
+    emotion_by_index = dict(zip(customer_idx, emotion_rows, strict=False))
+    # Keyed by segment id so extract_sentiment can persist all three axes unmerged. It
+    # cannot ride on SegmentView, which has one flat `emotions` map and would collapse them.
+    axes_by_segment: dict[UUID, EmotionAxes] = {}
     updated: list[SegmentView] = []
     for i, view in enumerate(views):
         labels = classifications[i].as_dict() if i < len(classifications) else {}
-        emo = emotion_by_index.get(i)
-        grouped = emo.grouped() if emo else {"positive": 0, "negative": 0, "neutral": 1, "valence": 0}
+        axes = emotion_by_index.get(i)
+        if axes is not None:
+            axes_by_segment[view.id] = axes
+        # `valence() is None` means the emotion axis was never scored. Metrics need a
+        # float, so it lands as 0.0 here — the axis-level truth stays on axes_by_segment,
+        # which is what the report is built from.
+        valence = axes.valence() if axes is not None else None
         updated.append(
             view.model_copy(
                 update={
                     "labels": labels,
-                    "emotions": {item.label: item.score for item in (emo.labels if emo else [])},
-                    "valence": float(grouped["valence"]),
+                    "emotions": {item.label: item.score for item in (axes.emotion if axes else [])},
+                    "valence": valence if valence is not None else 0.0,
                 }
             )
         )
@@ -439,7 +447,7 @@ def _analyze(
     intent = extract_buying_intent(views)
     candidates = [
         *extract_customer_truth(views),
-        *extract_sentiment(views),
+        *extract_sentiment(views, axes_by_segment),
         *intent,
         *extract_objections(views),
         *extract_commitments(views, recap),
