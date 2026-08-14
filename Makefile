@@ -1,4 +1,4 @@
-.PHONY: install lock lint fmt format typecheck test test-unit test-live migrate migrate-check api worker flower docker-build compose-up compose-down openapi setup infra infra-local up up-local down restart restart-local reset-db truncate check smoke hooks
+.PHONY: install lock lint fmt format typecheck test test-unit test-live migrate migrate-check api worker flower docker-build compose-up compose-down openapi setup infra infra-local up up-local down restart restart-local reset-db truncate check smoke hooks seaweed-tunnel
 
 UV ?= uv
 NPM ?= npm
@@ -115,6 +115,11 @@ docker-build:
 compose-up: up
 
 compose-down: down
+
+# Public HTTPS tunnel to Docker SeaweedFS (named domain). Inspector :4042.
+# Docs: docs/render.md
+seaweed-tunnel:
+	docker compose up -d ngrok-seaweed
 
 openapi:
 	$(UV) run python scripts/export_openapi.py

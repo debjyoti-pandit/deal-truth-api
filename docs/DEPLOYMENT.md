@@ -76,3 +76,12 @@ make up
 ```
 
 Health: `GET /health/ready` must show DB + blob. A call pipeline needs ML 200s on `POST /classify`.
+
+## Render (API + worker; laptop Seaweed)
+
+See [docs/render.md](render.md). Short path:
+
+```bash
+make up-local
+make seaweed-tunnel   # Docker ngrok → Seaweed; S3_ENDPOINT_URL=https://deal-truth-seaweed.ngrok-free.app
+```

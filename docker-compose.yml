@@ -99,6 +99,25 @@ services:
     ports:
       - "4040:4040"
 
+  # Reserved domain → local Seaweed S3. Render S3_ENDPOINT_URL points here.
+  ngrok-seaweed:
+    image: ngrok/ngrok:3
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/ngrok-seaweed-entrypoint.sh"]
+    volumes:
+      - ./scripts/ngrok-seaweed-entrypoint.sh:/ngrok-seaweed-entrypoint.sh:ro
+      - ./scripts/ngrok-seaweed.yml:/ngrok.yml:ro
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-${NGROK_AUTH_TOKEN:-}}
+      NGROK_AUTH_TOKEN: ${NGROK_AUTH_TOKEN:-}
+      NGROK_SEAWEED_DOMAIN: ${NGROK_SEAWEED_DOMAIN:-deal-truth-seaweed.ngrok-free.app}
+      NGROK_SEAWEED_UPSTREAM: http://seaweedfs:8333
+    ports:
+      - "4042:4040"
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+
   worker:
     build: .
     command: celery -A app.tasks.celery_app worker --loglevel=info

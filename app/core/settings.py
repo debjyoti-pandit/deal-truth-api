@@ -10,6 +10,26 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.core.enums import AudioInputMode, AuthMode
 
 
+def _rewrite_db_scheme(url: str, *, async_driver: bool) -> str:
+    """Accept Render/Supabase `postgres://` / `postgresql://` and pin our drivers."""
+    raw = url.strip()
+    if not raw:
+        return raw
+    target = "postgresql+asyncpg://" if async_driver else "postgresql+psycopg://"
+    for prefix in (
+        "postgresql+asyncpg://",
+        "postgresql+psycopg://",
+        "postgresql+psycopg2://",
+        "postgres+asyncpg://",
+        "postgres+psycopg://",
+        "postgresql://",
+        "postgres://",
+    ):
+        if raw.startswith(prefix):
+            return target + raw[len(prefix) :]
+    return raw
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -96,6 +116,16 @@ class Settings(BaseSettings):
     celery_max_retries: int = 5
     celery_retry_backoff: int = 2
     celery_retry_backoff_max: int = 60
+
+    @field_validator("database_url")
+    @classmethod
+    def _async_database_url(cls, value: str) -> str:
+        return _rewrite_db_scheme(value, async_driver=True)
+
+    @field_validator("database_sync_url")
+    @classmethod
+    def _sync_database_url(cls, value: str) -> str:
+        return _rewrite_db_scheme(value, async_driver=False)
 
     @field_validator("stereo_default_channel_seller")
     @classmethod
