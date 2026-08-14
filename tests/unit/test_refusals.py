@@ -218,3 +218,155 @@ def test_refusals_before_analysis_is_an_empty_zeroed_body(client: TestClient, se
         "shipped_count": 0,
         "refusals": [],
     }
+
+
+def _inject_refusable_candidates(monkeypatch) -> None:
+    """Make the pipeline produce real refusals.
+
+    The deterministic extractors cannot fail validation by construction, so without this the
+    only end-to-end assertions available are `0 == 0` — which is how reverting the runner to
+    pass `shipped` instead of `validated` slipped past the whole suite.
+    """
+    from app.intelligence import extract as extract_module
+    from app.pipeline import runner as runner_module
+
+    real = extract_module.extract_objections
+
+    def with_bad_candidates(segments):  # type: ignore[no-untyped-def]
+        out = list(real(segments))
+        seller = next((s for s in segments if s.speaker_role == SpeakerRole.SELLER), None)
+        customer = next((s for s in segments if s.speaker_role == SpeakerRole.CUSTOMER), None)
+        out.append(
+            CandidateInsight(
+                type=InsightType.OBJECTION,
+                title="Cites a segment that is not on this call",
+                summary="ghost",
+                confidence=0.9,
+                segment_ids=[uuid4()],
+            )
+        )
+        if seller is not None:
+            out.append(
+                CandidateInsight(
+                    type=InsightType.CUSTOMER_FACT,
+                    title="Attributes the rep's words to the customer",
+                    summary=seller.text,
+                    confidence=0.9,
+                    segment_ids=[seller.id],
+                )
+            )
+        if customer is not None:
+            out.append(
+                CandidateInsight(
+                    type=InsightType.CUSTOMER_FACT,
+                    title="Quotes words nobody said",
+                    summary="invented",
+                    confidence=0.9,
+                    segment_ids=[customer.id],
+                    payload={"quote": "We will sign the contract tomorrow."},
+                )
+            )
+        return out
+
+    monkeypatch.setattr(extract_module, "extract_objections", with_bad_candidates)
+    monkeypatch.setattr(runner_module, "extract_objections", with_bad_candidates)
+
+
+def test_refusals_survive_the_pipeline_and_reach_the_endpoint(
+    client: TestClient, session: Session, settings: Settings, blob: MemoryBlobStore, monkeypatch
+) -> None:
+    """The end-to-end guarantee: refusals reach the database and the API, not a local variable.
+
+    This is the test that fails if persist_insights is handed `shipped` instead of
+    `validated` — the exact regression this feature exists to prevent.
+    """
+    _inject_refusable_candidates(monkeypatch)
+    call_id = run_scenario(session, settings, blob, "happy_path")
+
+    body = client.get(f"/api/v1/calls/{call_id}/refusals").json()
+    assert body["refused_count"] >= 3, "injected bad candidates must be refused, not discarded"
+    assert {r["error_code"] for r in body["refusals"]} == {
+        "EVIDENCE_SEGMENT_MISSING",
+        "EVIDENCE_WRONG_SPEAKER",
+        "EVIDENCE_UNSUPPORTED",
+    }
+    assert all(r["drop_reason"] for r in body["refusals"])
+
+    report = client.get(f"/api/v1/calls/{call_id}/report").json()
+    assert report["refused_count"] == body["refused_count"] > 0
+    assert report["shipped_count"] == body["shipped_count"] > 0
+
+    # Nothing refused may appear as a claim anywhere.
+    refused_titles = {r["title"] for r in body["refusals"]}
+    shipped_titles = {i["title"] for i in client.get(f"/api/v1/calls/{call_id}/insights").json()}
+    assert not (refused_titles & shipped_titles)
+    assert "We will sign the contract tomorrow." not in str(report)
+
+
+def test_counts_track_the_latest_run_only(
+    client: TestClient, session: Session, settings: Settings, blob: MemoryBlobStore, monkeypatch
+) -> None:
+    """Refusals are per-run. A later run must not accumulate an earlier run's rows."""
+    _inject_refusable_candidates(monkeypatch)
+    call_id = run_scenario(session, settings, blob, "happy_path")
+    first = client.get(f"/api/v1/calls/{call_id}/refusals").json()
+    assert first["refused_count"] > 0
+
+    # A second analysis run over the same call, as a reanalysis would produce.
+    call = session.get(Call, call_id)
+    assert call is not None
+    validated, _ = validate_candidates(
+        [
+            CandidateInsight(
+                type=InsightType.OBJECTION,
+                title="Second run, still unsupported",
+                summary="x",
+                confidence=0.9,
+                segment_ids=[uuid4()],
+            )
+        ],
+        [],
+        confidence_threshold=0.5,
+    )
+    persist_insights(session, call, validated, manifest={})
+    session.commit()
+
+    second = client.get(f"/api/v1/calls/{call_id}/refusals").json()
+    stored = session.scalars(select(RefusedClaim).where(RefusedClaim.call_id == call_id)).all()
+    assert len(stored) > second["refused_count"], "both runs' rows must be stored"
+    assert second["refused_count"] == 1, "the endpoint reports the latest run only"
+    assert second["shipped_count"] == 0, "shipped_count must not accumulate across runs"
+    assert [r["title"] for r in second["refusals"]] == ["Second run, still unsupported"]
+
+
+def test_a_refused_claim_does_not_poison_a_later_valid_one(session: Session) -> None:
+    """A refused candidate must not consume its segments.
+
+    Marking segments as claimed while still validating let a candidate that went on to fail
+    reserve them anyway. The next, entirely valid claim on the same segment was then refused
+    as a duplicate of something that was never made — and told so in a sentence the UI shows
+    to a user.
+    """
+    customer = _seg(role=SpeakerRole.CUSTOMER, text="Manual routing costs us six hours a week.")
+    seller = _seg(role=SpeakerRole.SELLER, text="I can walk you through how we route calls.")
+    doomed = CandidateInsight(
+        type=InsightType.CUSTOMER_FACT,
+        title="Manual routing is expensive",
+        summary=customer.text,
+        confidence=0.9,
+        segment_ids=[customer.id, seller.id],  # second segment is the wrong speaker
+    )
+    valid = CandidateInsight(
+        type=InsightType.CUSTOMER_FACT,
+        title="Manual routing is expensive",
+        summary=customer.text,
+        confidence=0.9,
+        segment_ids=[customer.id],
+    )
+    call = _persist(session, [doomed, valid], [customer, seller])
+
+    rows = _refusals(session, call)
+    assert [r.error_code for r in rows] == ["EVIDENCE_WRONG_SPEAKER"]
+    assert not [r for r in rows if "already made" in r.drop_reason]
+    shipped = session.scalars(select(Insight)).all()
+    assert len(shipped) == 1, "the valid claim must still ship"

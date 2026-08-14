@@ -82,6 +82,7 @@ def validate_candidates(
         quotes: list[str] = []
         spans: list[tuple[int, int]] = []
         valid_ids: list[UUID] = []
+        claimed_keys: list[tuple[str, str, str]] = []
         # The specific code and reason travel with the refusal, not just into the event
         # log — a refusal that cannot say why it was refused proves nothing.
         failure: tuple[str, str] | None = None
@@ -122,11 +123,17 @@ def validate_candidates(
                     "This claim was already made against the same segment.",
                 )
                 break
-            seen.add(key)
+            claimed_keys.append(key)
 
         if failure is not None:
             kept.append(_unconfirmed_or_drop(cand, failure[1], failure[0]))
             continue
+
+        # Only a candidate that actually shipped claims its segments. Marking them while
+        # still walking would let a candidate that goes on to fail poison a later, valid
+        # claim — which would then be refused as a duplicate of something never made, and
+        # told so in a sentence the UI shows the user.
+        seen.update(claimed_keys)
 
         status = cand.evidence_status
         if cand.confidence < confidence_threshold:

@@ -57,7 +57,7 @@ returns zeroed counts rather than a 409, so the UI can render the card at any po
 | Field | Meaning |
 |---|---|
 | `refused_count` | Claims the validator refused on the latest analysis run. |
-| `shipped_count` | Insights that run persisted. `shipped_count + refused_count` is the number of candidates the run considered. |
+| `shipped_count` | Insights that run persisted. `shipped_count + refused_count` is the number of candidates the run considered — **except** in the reanalysis window described below. |
 | `error_code` | Why it was refused: `EVIDENCE_UNSUPPORTED` (nothing in the transcript backs it, or the quote is not in the cited segment), `EVIDENCE_WRONG_SPEAKER` (cited the wrong speaker — e.g. a Customer Truth citing the rep), `EVIDENCE_SEGMENT_MISSING` (cited a segment that does not exist on this call). |
 | `drop_reason` | One sentence, safe to show a user. |
 | `attempted_segment_ids` | Segments the claim cited and failed on. **Not evidence** — never render these as proof of the claim. Empty when the claim cited nothing at all. |
@@ -65,6 +65,12 @@ returns zeroed counts rather than a 409, so the UI can render the card at any po
 
 `refused_count` and `shipped_count` are also on the **top level of `GET /report`**, so a
 Manager Brief can state both without a second request.
+
+**The sum does not hold during reanalysis.** `PATCH /speakers` deletes the customer-only
+insights and enqueues a new run, so between those two moments `shipped_count` counts a
+partially-emptied run while `refused_count` still reflects the whole of it. `/report` returns
+409 in that window, but `/refusals` deliberately has no readiness gate, so this is a state the
+UI can render. Treat the two counts as independently true and do not assert the sum client-side.
 
 **`refused_count` is 0 on every call today** — see `ARCHITECTURE.md` §14. The deterministic
 extractors cannot produce a refusal (each filters by speaker role before emitting), so

@@ -109,6 +109,11 @@ def get_report(
     except Exception as exc:
         raise BlobDownloadFailed("Report artifact could not be read") from exc
     if report is not None:
+        # Artifacts written before these counts existed are served verbatim from the blob
+        # store and never backfilled, so a conforming client would KeyError on a report it
+        # can still legitimately fetch. Default them rather than omit them.
+        report.setdefault("shipped_count", 0)
+        report.setdefault("refused_count", 0)
         # API-4: build_report runs on ValidatedInsight objects, which carry no Insight.id,
         # so the id a card needs for ?insight=<id> is resolved here against the persisted
         # rows — the same ids GET /insights serves.
@@ -119,6 +124,8 @@ def get_report(
         "status": call.status.value,
         "headline": None,
         "insights": [],
+        "shipped_count": 0,
+        "refused_count": 0,
     }
 
 
