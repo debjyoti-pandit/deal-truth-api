@@ -18,12 +18,18 @@ def build_report(
     metrics: dict[str, Any],
     insights: list[ValidatedInsight],
     warnings: list[str],
+    *,
+    refused_count: int = 0,
 ) -> dict[str, Any]:
     def by_type(t: InsightType) -> list[dict[str, Any]]:
         return [_insight_dict(i) for i in insights if i.type == t]
 
     return {
         "call_id": str(call.id),
+        # What the gate let through, and what it turned away. Both at the top level so a
+        # brief can state them without a second request. Full refusals: GET .../refusals.
+        "shipped_count": len(insights),
+        "refused_count": refused_count,
         "public_call_id": call.public_call_id,
         "title": call.title,
         "customer_name": call.customer_name,

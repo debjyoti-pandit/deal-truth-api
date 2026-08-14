@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, desc
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, deferred, mapped_column, relationship
 from sqlalchemy.schema import FetchedValue
@@ -76,6 +76,35 @@ class Insight(Base):
 
     analysis_run: Mapped[AnalysisRun] = relationship(back_populates="insights")
     evidence_links: Mapped[list[EvidenceLink]] = relationship(back_populates="insight", cascade="all, delete-orphan")
+
+
+class RefusedClaim(Base):
+    """A claim the evidence validator refused.
+
+    These used to be discarded, which made the gate invisible: a report could not show
+    what it declined to say. Refusals are recorded, never retried — retrying a semantic
+    failure until it happens to pass is how evidence gets fabricated.
+    """
+
+    __tablename__ = "refused_claims"
+    __table_args__ = (Index("ix_refused_claims_call", "call_id", desc("created_at")),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    analysis_run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("analysis_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    call_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("calls.id", ondelete="CASCADE"), nullable=False)
+    insight_type: Mapped[str] = mapped_column(String(48), nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    drop_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    # The segments the claim cited and failed on. Deliberately not evidence_links: these
+    # segments do not support the claim, and must never be joined as though they did.
+    attempted_segment_ids: Mapped[list[Any]] = mapped_column(JSONType, default=list, nullable=False)
+    attempted_quote: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = created_at_col()
 
 
 class RecapRecord(Base):

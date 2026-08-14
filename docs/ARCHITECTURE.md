@@ -327,6 +327,7 @@ UUID primary keys unless a stable string is required. All tables via Alembic mig
 | `analysis_runs` | call_id, version, status, model_manifest JSONB, started_at, finished_at |
 | `insights` | analysis_run_id, type, title, summary, severity, confidence, evidence_status, payload JSONB; Postgres `text_search` tsvector (generated over title+summary) + GIN |
 | `evidence_links` | insight_id, transcript_segment_id, relationship, sort_order |
+| `refused_claims` | analysis_run_id, call_id, insight_type, title, summary, error_code, drop_reason, attempted_segment_ids JSONB, attempted_quote, confidence — claims the validator refused, recorded rather than discarded (migration `0005_refused_claims`) |
 | `recap_records` | call_id, provider_status, headline, tldr, summary, raw_record JSONB |
 | `call_metrics` | call_id, talk_ratio JSONB, longest_monologue JSONB, question_rate JSONB, keyword_hits JSONB |
 | `transcript_chunks` | call_id, start_segment_id, end_segment_id, text, embedding vector(1024) |
@@ -360,6 +361,19 @@ Every insight passes through the validator before persistence/report:
 Failure handling: **do not retry the model** — drop or mark `UNCONFIRMED` and log a validation
 event.
 
+A refused claim is **recorded, not discarded.** Every dropped candidate is written to
+`refused_claims` with the code that refused it (`EVIDENCE_UNSUPPORTED`,
+`EVIDENCE_WRONG_SPEAKER`, `EVIDENCE_SEGMENT_MISSING`), a human-readable reason, and the
+segments and quote it tried and failed to stand on. This is what makes the gate
+demonstrable: without it the API can report what it said, never what it declined to say.
+The attempted segments are stored as plain JSON, deliberately **not** as `evidence_links` —
+those segments do not support the claim and must never be joined as though they did.
+
+Note that the deterministic extractors cannot themselves produce a refusal: each filters by
+speaker role before emitting and cites only segments it just read. Refusals arise from
+**model-proposed** candidates, so `refused_count` stays 0 until `/v1/analyze-call` is adopted
+(see §14).
+
 ---
 
 ## 8. API Surface
@@ -372,7 +386,7 @@ event.
 | Audio | `POST .../audio` (upload), `POST .../source-url` (SSRF-safe fetch), `GET .../audio` (Range streaming), `GET .../audio-url` (mints `{url, expires_at}` for `<audio src>`), `GET /api/v1/public/audio/{asset_id}` (signed) |
 | Processing | `POST .../process` (**400 `INVALID_AUDIO`** without an audio asset; logs a `QUEUED` event), `POST .../reanalyze`, `POST .../cancel`, `GET .../events`, `GET .../stream` (SSE) |
 | Transcript | `GET .../transcript` (empty 200 before transcription), `PATCH .../speakers` (role swap → invalidate customer-only insights → enqueue reanalysis, preserve transcript) |
-| Report | `GET .../report`, `GET .../insights`, `GET .../metrics` — report/exports return **409 `NOT_READY`** until `SHIPPED`/`PARTIAL` |
+| Report | `GET .../report`, `GET .../insights`, `GET .../metrics`, `GET .../refusals` — report/exports return **409 `NOT_READY`** until `SHIPPED`/`PARTIAL`; `/refusals` has no readiness gate and returns zeroed counts before analysis |
 | Ask | `POST .../ask` — `no_index` (200) when unindexed; lexical fallback when ML is down |
 | Search | `GET /api/v1/search?q=` — ranked Postgres FTS (`websearch_to_tsquery` + `ts_rank`) with filters `status`, `from`/`to`, `call_id`, `speaker_role`, `types`; SQLite ILIKE in tests. See [search.md](search.md) |
 | Recommendations | `GET /api/v1/recommendations` — suggested explorations from latest-run insights on finished calls |
@@ -488,6 +502,10 @@ committed, README covers startup + live tests.
 
 ## 14. Known Open Items
 
+- `refused_count` is 0 on every call today. The evidence gate and `refused_claims` are wired
+  end to end, but only **model-proposed** candidates can fail validation, and the API still
+  builds candidates deterministically. Adopting `/v1/analyze-call` is what starts populating
+  it — until then the refusal machinery is proven by unit tests, not by live data.
 - ~~Confirm the hosted `deal-truth-ml` endpoint contract~~ — **confirmed** (compat aliases
   `/classify`, `/emotion`, `/embed`, `/generate`; see §5). Any future drift stays isolated to
   `DealTruthMLClient`.

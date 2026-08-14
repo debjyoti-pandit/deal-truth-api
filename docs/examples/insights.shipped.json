@@ -1,6 +1,6 @@
 [
   {
-    "id": "2f08fb33-d8fa-4507-94aa-aa719ee21181",
+    "id": "99c0e680-f98d-442f-82a1-0b84321c889f",
     "type": "CUSTOMER_FACT",
     "title": "Customer pain",
     "summary": "We're losing around 6 hours every week manually routing these calls.",
@@ -8,7 +8,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "edf76a3c-6976-405a-ba2d-5e9e51f710e5"
+      "bc0155d2-3645-433a-96e4-10be774bab85"
     ],
     "quotes": [
       "We're losing around 6 hours every week manually routing these calls."
@@ -34,7 +34,7 @@
     }
   },
   {
-    "id": "b32a19ab-e1a9-4d8d-b6a9-ce9ec376a512",
+    "id": "e786e921-67dd-4c09-b5a4-3917a2e58288",
     "type": "CUSTOMER_FACT",
     "title": "Customer requirement",
     "summary": "If you can support Salesforce, I think we're good to move forward next week.",
@@ -42,7 +42,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -68,7 +68,7 @@
     }
   },
   {
-    "id": "6717ebee-5947-4703-94c8-8e37d82f8fd6",
+    "id": "c90971ce-1f64-4266-8564-9884f7c68e86",
     "type": "CUSTOMER_FACT",
     "title": "Customer buying signal",
     "summary": "If you can support Salesforce, I think we're good to move forward next week.",
@@ -76,7 +76,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -102,7 +102,7 @@
     }
   },
   {
-    "id": "0db5a710-fd97-4b94-ae2b-243bc9b14474",
+    "id": "0c2494d2-3312-49ac-a073-2b5546f6aecf",
     "type": "CUSTOMER_FACT",
     "title": "Customer timeline",
     "summary": "If you can support Salesforce, I think we're good to move forward next week.",
@@ -110,7 +110,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -136,7 +136,7 @@
     }
   },
   {
-    "id": "017dca7f-207b-401c-8da7-5f9498d80054",
+    "id": "bbb1d0af-6f26-489f-9a60-5f716816df5a",
     "type": "CUSTOMER_FACT",
     "title": "Customer commitment",
     "summary": "If you can support Salesforce, I think we're good to move forward next week.",
@@ -144,7 +144,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -170,7 +170,7 @@
     }
   },
   {
-    "id": "c8bccce9-7757-45fa-8e82-c7231eabe58f",
+    "id": "923aaeff-687e-4a3b-be9f-e306fea64dcc",
     "type": "SENTIMENT_POINT",
     "title": "Customer emotion",
     "summary": "We're losing around 6 hours every week manually routing these calls.",
@@ -178,7 +178,7 @@
     "confidence": 0.7,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "edf76a3c-6976-405a-ba2d-5e9e51f710e5"
+      "bc0155d2-3645-433a-96e4-10be774bab85"
     ],
     "quotes": [
       "We're losing around 6 hours every week manually routing these calls."
@@ -213,7 +213,7 @@
     }
   },
   {
-    "id": "46153a00-00fe-4abc-a00d-1727d5882940",
+    "id": "2590ecef-fde9-45b7-a0e0-382b737fbc7b",
     "type": "SENTIMENT_POINT",
     "title": "Customer emotion",
     "summary": "If you can support Salesforce, I think we're good to move forward next week.",
@@ -221,7 +221,7 @@
     "confidence": 1.0,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -255,7 +255,7 @@
     }
   },
   {
-    "id": "88755803-8247-4efc-9d69-93b4832f14db",
+    "id": "73d19765-b3e3-4db1-98f7-59eb7c98e284",
     "type": "QUALIFICATION_SIGNAL",
     "title": "pain_identified",
     "summary": "We're losing around 6 hours every week manually routing these calls.",
@@ -263,7 +263,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "edf76a3c-6976-405a-ba2d-5e9e51f710e5"
+      "bc0155d2-3645-433a-96e4-10be774bab85"
     ],
     "quotes": [
       "We're losing around 6 hours every week manually routing these calls."
@@ -289,7 +289,7 @@
     }
   },
   {
-    "id": "7e4ee46d-3fd1-4e06-9657-db860d51fd30",
+    "id": "da222246-18a4-427f-b572-db83750d1cfe",
     "type": "QUALIFICATION_SIGNAL",
     "title": "business_impact_identified",
     "summary": "We're losing around 6 hours every week manually routing these calls.",
@@ -297,7 +297,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "edf76a3c-6976-405a-ba2d-5e9e51f710e5"
+      "bc0155d2-3645-433a-96e4-10be774bab85"
     ],
     "quotes": [
       "We're losing around 6 hours every week manually routing these calls."
@@ -323,7 +323,7 @@
     }
   },
   {
-    "id": "20e44490-de69-4e45-8fe8-0fdc0b7a5e57",
+    "id": "243e8386-f143-4357-a1e2-12b112b78de2",
     "type": "QUALIFICATION_SIGNAL",
     "title": "timeline_identified",
     "summary": "If you can support Salesforce, I think we're good to move forward next week.",
@@ -331,7 +331,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -357,7 +357,7 @@
     }
   },
   {
-    "id": "2cf7f9a5-d272-4a6c-81f0-cfdb71b004a7",
+    "id": "9a7e06ce-2f12-4ebe-aaa8-969714f024c7",
     "type": "QUALIFICATION_SIGNAL",
     "title": "economic_buyer_identified",
     "summary": "economic_buyer_identified not supported by transcript",
@@ -374,7 +374,7 @@
     }
   },
   {
-    "id": "fc770c33-0e09-4201-9634-75760aba72cd",
+    "id": "6d6d62b4-1753-4469-ad78-6ad22309f5fb",
     "type": "QUALIFICATION_SIGNAL",
     "title": "decision_maker_identified",
     "summary": "decision_maker_identified not supported by transcript",
@@ -391,7 +391,7 @@
     }
   },
   {
-    "id": "37120ebc-6f4b-4798-a88c-0b8a17b91c13",
+    "id": "4b57d549-a7f6-4b6b-9607-119011673880",
     "type": "QUALIFICATION_SIGNAL",
     "title": "next_meeting_committed",
     "summary": "If you can support Salesforce, I think we're good to move forward next week.",
@@ -399,7 +399,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -425,7 +425,7 @@
     }
   },
   {
-    "id": "30db950b-8c2c-4d63-8fd8-d465b88b5b2e",
+    "id": "c9f6c686-6cce-41f9-b265-5fd339be6d90",
     "type": "QUALIFICATION_SIGNAL",
     "title": "competitor_active",
     "summary": "competitor_active not supported by transcript",
@@ -442,7 +442,7 @@
     }
   },
   {
-    "id": "5a0464c8-5f80-4e63-82f0-86c3ca7c00ee",
+    "id": "a3a578b8-90ab-41be-a5b0-3a3581777501",
     "type": "QUALIFICATION_SIGNAL",
     "title": "blocker_active",
     "summary": "blocker_active not supported by transcript",
@@ -459,7 +459,7 @@
     }
   },
   {
-    "id": "36b0716e-7d1c-43a7-aae0-3e4709d25a91",
+    "id": "9d87c5eb-e13e-4d2b-a43c-13bf1e8a93cf",
     "type": "OBJECTION",
     "title": "Timing objection",
     "summary": "If you can support Salesforce, I think we're good to move forward next week.",
@@ -467,7 +467,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -492,7 +492,7 @@
     }
   },
   {
-    "id": "f376ea38-9c1c-43d0-93a7-2e35edd11650",
+    "id": "e4480835-e5e9-4269-81c7-bd1e005a098a",
     "type": "COACHING",
     "title": "Handle timing objection",
     "summary": "Ask for a concrete purchase or evaluation deadline. Do not invent a timeline.",
@@ -500,7 +500,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -526,7 +526,7 @@
     }
   },
   {
-    "id": "88d1b67f-9657-4619-a05d-7c3e37d9e089",
+    "id": "47d8152f-dd20-4766-857e-290efe519dd3",
     "type": "OBJECTION",
     "title": "Integration objection",
     "summary": "If you can support Salesforce, I think we're good to move forward next week.",
@@ -534,7 +534,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -559,7 +559,7 @@
     }
   },
   {
-    "id": "ba6c8878-64cf-49c5-8cd3-1fd518b67c24",
+    "id": "bf81da7a-f6c4-4d31-801a-baecbe7223d0",
     "type": "COACHING",
     "title": "Handle integration objection",
     "summary": "Confirm the systems named on the call and the owner of the integration review.",
@@ -567,7 +567,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -593,7 +593,7 @@
     }
   },
   {
-    "id": "cd44d3c6-b9a4-4793-b54c-c7350dc5fc0f",
+    "id": "f3838b65-70fc-42c8-b3cd-9abb0f6900f5",
     "type": "COMMITMENT",
     "title": "Seller commitment",
     "summary": "Thanks for taking the time today. I can walk you through how we route calls.",
@@ -601,7 +601,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "a06548f4-8e9a-4a58-8d52-cffbc50ab91d"
+      "77f4b52e-a08e-43d4-8061-5ab84dcd4b1e"
     ],
     "quotes": [
       "Thanks for taking the time today. I can walk you through how we route calls."
@@ -628,7 +628,7 @@
     }
   },
   {
-    "id": "a6f04581-3e78-4780-b911-7233079eee2f",
+    "id": "8746d2ff-15c4-4456-b26e-669a17ae0efe",
     "type": "COMMITMENT",
     "title": "Seller commitment",
     "summary": "That is helpful. I will send the SOC2 report by Friday.",
@@ -636,7 +636,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "32345bfc-8778-4855-b32f-faf03f516e7b"
+      "6c0547c3-2f37-4dcc-83db-942f36d85b9f"
     ],
     "quotes": [
       "That is helpful. I will send the SOC2 report by Friday."
@@ -663,7 +663,7 @@
     }
   },
   {
-    "id": "06f58745-2f12-4c37-aea6-85ff63de9ff4",
+    "id": "18970c51-ad01-4713-b7d7-f220f8f9eebd",
     "type": "COMMITMENT",
     "title": "Customer commitment",
     "summary": "If you can support Salesforce, I think we're good to move forward next week.",
@@ -671,7 +671,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -698,7 +698,7 @@
     }
   },
   {
-    "id": "1493a96e-265d-4436-a749-fda583b705d8",
+    "id": "99fe1345-f368-44e0-9518-4effaaecd975",
     "type": "COMMITMENT",
     "title": "Next meeting commitment",
     "summary": "If you can support Salesforce, I think we're good to move forward next week.",
@@ -706,7 +706,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -733,7 +733,7 @@
     }
   },
   {
-    "id": "b013d6b0-f2df-46d6-b7f9-d51f8b06c423",
+    "id": "2f638d3a-4b90-4f6b-882d-5c7c0948803d",
     "type": "DEAL_RISK",
     "title": "No economic buyer",
     "summary": "No economic buyer \u2014 no supporting customer evidence in the transcript.",
@@ -749,7 +749,7 @@
     }
   },
   {
-    "id": "1e2db8ab-3537-482e-9df5-fecf395a0936",
+    "id": "b123d162-0572-41d9-ab2f-a1ee3e623d51",
     "type": "COMPETITOR",
     "title": "Salesforce",
     "summary": "If you can support Salesforce, I think we're good to move forward next week.",
@@ -757,7 +757,7 @@
     "confidence": 0.7,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -784,7 +784,7 @@
     }
   },
   {
-    "id": "f41e0ab8-34a5-4216-bc20-7793f2ad813f",
+    "id": "9db885ae-99f5-4496-80f9-3023d5641e81",
     "type": "CALL_MOMENT",
     "title": "Next Step",
     "summary": "Thanks for taking the time today. I can walk you through how we route calls.",
@@ -792,7 +792,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "a06548f4-8e9a-4a58-8d52-cffbc50ab91d"
+      "77f4b52e-a08e-43d4-8061-5ab84dcd4b1e"
     ],
     "quotes": [
       "Thanks for taking the time today. I can walk you through how we route calls."
@@ -818,7 +818,7 @@
     }
   },
   {
-    "id": "c201372f-2008-4ef3-9230-a0e3cdc543b1",
+    "id": "197a3149-916c-4fa3-a892-973af40e1622",
     "type": "CALL_MOMENT",
     "title": "Pain",
     "summary": "We're losing around 6 hours every week manually routing these calls.",
@@ -826,7 +826,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "edf76a3c-6976-405a-ba2d-5e9e51f710e5"
+      "bc0155d2-3645-433a-96e4-10be774bab85"
     ],
     "quotes": [
       "We're losing around 6 hours every week manually routing these calls."
@@ -852,7 +852,7 @@
     }
   },
   {
-    "id": "a4422272-9440-4803-ad57-f793cc295254",
+    "id": "cc765826-6a0d-4dd0-af4c-a8b50afb2543",
     "type": "CALL_MOMENT",
     "title": "Next Step",
     "summary": "That is helpful. I will send the SOC2 report by Friday.",
@@ -860,7 +860,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "32345bfc-8778-4855-b32f-faf03f516e7b"
+      "6c0547c3-2f37-4dcc-83db-942f36d85b9f"
     ],
     "quotes": [
       "That is helpful. I will send the SOC2 report by Friday."
@@ -886,7 +886,7 @@
     }
   },
   {
-    "id": "d2bef161-2878-4def-a4d1-0695e12d7991",
+    "id": "9cafa5f6-7cf1-4d25-95a2-5d67c664e49b",
     "type": "CALL_MOMENT",
     "title": "Buying Signal",
     "summary": "If you can support Salesforce, I think we're good to move forward next week.",
@@ -894,7 +894,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -920,7 +920,7 @@
     }
   },
   {
-    "id": "710632f8-efd0-4a5c-a8c3-e5e9103a2fc8",
+    "id": "4e3cd326-2192-4347-844e-68f264fbe49e",
     "type": "CALL_MOMENT",
     "title": "Commitment",
     "summary": "If you can support Salesforce, I think we're good to move forward next week.",
@@ -928,7 +928,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."
@@ -954,7 +954,7 @@
     }
   },
   {
-    "id": "83696380-90e8-430d-a5ad-beaee1a10024",
+    "id": "6e135d74-5dfd-47ab-8f99-c1e21cab8c11",
     "type": "CALL_MOMENT",
     "title": "Next Step",
     "summary": "If you can support Salesforce, I think we're good to move forward next week.",
@@ -962,7 +962,7 @@
     "confidence": 0.92,
     "evidence_status": "SUPPORTED",
     "segment_ids": [
-      "bb6189fe-fc54-4829-bfd3-3cf893519cd1"
+      "f5f14a65-cc3c-4e37-9f59-9eeb5a1b83cb"
     ],
     "quotes": [
       "If you can support Salesforce, I think we're good to move forward next week."

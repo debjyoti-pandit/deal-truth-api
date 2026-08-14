@@ -462,10 +462,12 @@ def _analyze(
             details=event,
         )
     shipped = shippable(validated)
+    # Pass the full validated set, not just the shippable ones: persist_insights splits
+    # them, writing refusals to refused_claims instead of discarding them.
     persist_insights(
         session,
         call,
-        shipped,
+        validated,
         manifest={
             "pyai_recap": bool(recap),
             "warnings": warnings,
@@ -489,7 +491,7 @@ def _analyze(
     )
     persist_chunks(session, call, chunks, embeddings)
 
-    report = build_report(call, recap, metrics, shipped, warnings)
+    report = build_report(call, recap, metrics, shipped, warnings, refused_count=len(validated) - len(shipped))
     # The stored report carries the terminal outcome, not the in-flight INDEXING status.
     outcome = CallStatus.PARTIAL if warnings else CallStatus.SHIPPED
     report["status"] = outcome.value

@@ -50,3 +50,8 @@ class ValidatedInsight(BaseModel):
     relationship: str = "supports"
     dropped: bool = False
     drop_reason: str | None = None
+    # Set only on dropped insights, so a refusal can be recorded with the evidence it
+    # tried and failed to stand on. Never populated on anything that ships.
+    error_code: str | None = None
+    attempted_segment_ids: list[UUID] = Field(default_factory=list)
+    attempted_quote: str | None = None

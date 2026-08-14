@@ -27,7 +27,7 @@ from app.intelligence.ask import ask as ask_call
 from app.intelligence.ask import ask_lexical
 from app.intelligence.email import build_follow_up, polish_or_fallback
 from app.intelligence.search import search_calls
-from app.models.analysis import AnalysisRun, CallMetrics, Insight
+from app.models.analysis import AnalysisRun, CallMetrics, Insight, RefusedClaim
 from app.models.call import Call
 from app.models.evidence import EvidenceLink
 from app.models.transcript import TranscriptChunk, TranscriptSegment
@@ -116,6 +116,44 @@ def get_insights(call_id: UUID, session: Session = Depends(get_sync_session)) ->
             }
         )
     return out
+
+
+@router.get("/calls/{call_id}/refusals")
+def get_refusals(call_id: UUID, session: Session = Depends(get_sync_session)) -> dict[str, object]:
+    """Claims the evidence validator refused to ship, and why.
+
+    The counts come from the latest analysis run, so they reconcile with GET /insights:
+    shipped_count + refused_count is the number of candidates that run considered.
+    """
+    if session.get(Call, call_id) is None:
+        raise NotFoundError("Call not found")
+    run = _latest_run(session, call_id)
+    if run is None:
+        return {"call_id": str(call_id), "refused_count": 0, "shipped_count": 0, "refusals": []}
+    rows = session.scalars(
+        select(RefusedClaim).where(RefusedClaim.analysis_run_id == run.id).order_by(RefusedClaim.created_at.desc())
+    ).all()
+    shipped_count = session.scalar(select(func.count()).select_from(Insight).where(Insight.analysis_run_id == run.id))
+    return {
+        "call_id": str(call_id),
+        "refused_count": len(rows),
+        "shipped_count": int(shipped_count or 0),
+        "refusals": [
+            {
+                "id": str(row.id),
+                "insight_type": row.insight_type,
+                "title": row.title,
+                "summary": row.summary,
+                "error_code": row.error_code,
+                "drop_reason": row.drop_reason,
+                "attempted_segment_ids": row.attempted_segment_ids,
+                "attempted_quote": row.attempted_quote,
+                "confidence": row.confidence,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
+        ],
+    }
 
 
 @router.get("/calls/{call_id}/metrics")

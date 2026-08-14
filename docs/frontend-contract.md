@@ -26,6 +26,51 @@ Committed samples generated from the synthetic fixture pipeline (regenerate with
 - `docs/examples/events.shipped.json` — `GET /events`
 - `docs/examples/transcript.shipped.json` — `GET /transcript`
 
+## Refused claims
+
+`GET /calls/{id}/refusals` (authenticated) → what the evidence gate declined to ship, and
+why. Unlike `/report`, it has **no readiness gate**: before any analysis run exists it
+returns zeroed counts rather than a 409, so the UI can render the card at any point.
+
+```json
+{
+  "call_id": "<uuid>",
+  "refused_count": 1,
+  "shipped_count": 23,
+  "refusals": [
+    {
+      "id": "<uuid>",
+      "insight_type": "CUSTOMER_FACT",
+      "title": "Customer has budget approved for this quarter",
+      "summary": "Customer confirmed budget.",
+      "error_code": "EVIDENCE_UNSUPPORTED",
+      "drop_reason": "No segment supports this claim.",
+      "attempted_segment_ids": [],
+      "attempted_quote": null,
+      "confidence": 0.61,
+      "created_at": "2026-08-14T08:45:40+00:00"
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `refused_count` | Claims the validator refused on the latest analysis run. |
+| `shipped_count` | Insights that run persisted. `shipped_count + refused_count` is the number of candidates the run considered. |
+| `error_code` | Why it was refused: `EVIDENCE_UNSUPPORTED` (nothing in the transcript backs it, or the quote is not in the cited segment), `EVIDENCE_WRONG_SPEAKER` (cited the wrong speaker — e.g. a Customer Truth citing the rep), `EVIDENCE_SEGMENT_MISSING` (cited a segment that does not exist on this call). |
+| `drop_reason` | One sentence, safe to show a user. |
+| `attempted_segment_ids` | Segments the claim cited and failed on. **Not evidence** — never render these as proof of the claim. Empty when the claim cited nothing at all. |
+| `attempted_quote` | The quote the claim asserted, when it asserted one that is not in the transcript. `null` otherwise. Render as *disputed*, never as a transcript quote. |
+
+`refused_count` and `shipped_count` are also on the **top level of `GET /report`**, so a
+Manager Brief can state both without a second request.
+
+**`refused_count` is 0 on every call today** — see `ARCHITECTURE.md` §14. The deterministic
+extractors cannot produce a refusal (each filters by speaker role before emitting), so
+refusals only begin once model-proposed candidates flow through the gate. Build the UI to
+handle 0 gracefully; it is the current correct value, not a bug.
+
 ## Processing events (GAP-BE-007)
 
 `EventOut.stage` uses CallStatus vocabulary: `CREATED`, `UPLOADING`, `QUEUED`, `TRANSCRIBING`,

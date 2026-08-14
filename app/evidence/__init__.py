@@ -70,31 +70,46 @@ def validate_candidates(
 
         if not cand.segment_ids:
             events.append(_event("EVIDENCE_UNSUPPORTED", cand, "no evidence for factual insight"))
-            kept.append(_unconfirmed_or_drop(cand, "no evidence"))
+            kept.append(
+                _unconfirmed_or_drop(
+                    cand,
+                    "No segment supports this claim.",
+                    "EVIDENCE_UNSUPPORTED",
+                )
+            )
             continue
 
         quotes: list[str] = []
         spans: list[tuple[int, int]] = []
         valid_ids: list[UUID] = []
-        failed = False
+        # The specific code and reason travel with the refusal, not just into the event
+        # log — a refusal that cannot say why it was refused proves nothing.
+        failure: tuple[str, str] | None = None
         for sid in cand.segment_ids:
             seg = by_id.get(sid)
             if seg is None:
                 events.append(_event("EVIDENCE_SEGMENT_MISSING", cand, f"missing segment {sid}"))
-                failed = True
+                failure = ("EVIDENCE_SEGMENT_MISSING", f"Cited segment {sid} does not exist on this call.")
                 break
             required = cand.required_role
             if required is None and cand.type in CUSTOMER_ONLY_TYPES:
                 required = SpeakerRole.CUSTOMER
             if required is not None and seg.speaker_role != required:
                 events.append(_event("EVIDENCE_WRONG_SPEAKER", cand, f"expected {required.value}"))
-                failed = True
+                failure = (
+                    "EVIDENCE_WRONG_SPEAKER",
+                    f"The cited segment was spoken by the {seg.speaker_role.value}, "
+                    f"but this claim requires the {required.value}.",
+                )
                 break
             claimed_quote = cand.payload.get("quote")
             if isinstance(claimed_quote, str) and claimed_quote.strip():
                 if claimed_quote.strip() not in seg.text:
                     events.append(_event("EVIDENCE_UNSUPPORTED", cand, "quote is not in transcript"))
-                    failed = True
+                    failure = (
+                        "EVIDENCE_UNSUPPORTED",
+                        "The quoted words do not appear in the cited transcript segment.",
+                    )
                     break
             quotes.append(seg.text)
             spans.append((seg.start_ms, seg.end_ms))
@@ -102,12 +117,15 @@ def validate_candidates(
             key = (cand.type.value, cand.title, str(sid))
             if key in seen:
                 events.append(_event("EVIDENCE_UNSUPPORTED", cand, "duplicate insight/evidence"))
-                failed = True
+                failure = (
+                    "EVIDENCE_UNSUPPORTED",
+                    "This claim was already made against the same segment.",
+                )
                 break
             seen.add(key)
 
-        if failed:
-            kept.append(_unconfirmed_or_drop(cand, "validation failed"))
+        if failure is not None:
+            kept.append(_unconfirmed_or_drop(cand, failure[1], failure[0]))
             continue
 
         status = cand.evidence_status
@@ -137,7 +155,8 @@ def validate_candidates(
     return kept, events
 
 
-def _unconfirmed_or_drop(cand: CandidateInsight, reason: str) -> ValidatedInsight:
+def _unconfirmed_or_drop(cand: CandidateInsight, reason: str, error_code: str) -> ValidatedInsight:
+    claimed_quote = cand.payload.get("quote")
     return ValidatedInsight(
         type=cand.type,
         title=cand.title,
@@ -151,6 +170,11 @@ def _unconfirmed_or_drop(cand: CandidateInsight, reason: str) -> ValidatedInsigh
         payload={**cand.payload, "unconfirmed_reason": reason},
         dropped=True,
         drop_reason=reason,
+        error_code=error_code,
+        # What it tried to stand on. Kept for the refusal record only; segment_ids stays
+        # empty so nothing downstream can mistake an attempt for evidence.
+        attempted_segment_ids=list(cand.segment_ids),
+        attempted_quote=claimed_quote.strip() if isinstance(claimed_quote, str) and claimed_quote.strip() else None,
     )
 
 

@@ -14,7 +14,7 @@ from app.core.enums import AnalysisRunStatus, SpeakerRole
 from app.core.errors import MLResponseInvalid
 from app.core.settings import Settings
 from app.intelligence.domain import SegmentView, ValidatedInsight
-from app.models.analysis import AnalysisRun, CallMetrics, Insight, RecapRecord
+from app.models.analysis import AnalysisRun, CallMetrics, Insight, RecapRecord, RefusedClaim
 from app.models.call import Call
 from app.models.evidence import EvidenceLink
 from app.models.transcript import Speaker, TranscriptChunk, TranscriptSegment
@@ -165,6 +165,22 @@ def persist_insights(
     session.flush()
     for item in insights:
         if item.dropped:
+            # The refusal is the product working, not an error. Record what was claimed
+            # and why it was refused; never the quote as though it were evidence.
+            session.add(
+                RefusedClaim(
+                    analysis_run_id=run.id,
+                    call_id=call.id,
+                    insight_type=item.type.value,
+                    title=item.title,
+                    summary=item.summary,
+                    error_code=item.error_code or "EVIDENCE_UNSUPPORTED",
+                    drop_reason=item.drop_reason or "Refused by the evidence validator.",
+                    attempted_segment_ids=[str(s) for s in item.attempted_segment_ids],
+                    attempted_quote=item.attempted_quote,
+                    confidence=item.confidence,
+                )
+            )
             continue
         row = Insight(
             analysis_run_id=run.id,
