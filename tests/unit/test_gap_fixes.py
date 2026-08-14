@@ -179,11 +179,19 @@ def test_search_filters_status_and_call_id(client: TestClient) -> None:
         assert "sequence_number" in seg
 
     # CREATED call has no transcript; status=CREATED should not return SOC2 segments.
-    created_hits = client.get(
+    no_transcript = client.get(
         "/api/v1/search",
         params={"q": "SOC2", "status": "CREATED"},
     ).json()
-    assert created_hits["groups"]["segments"] == []
+    assert no_transcript["groups"]["segments"] == []
+
+    # The status filter reaches the calls group too. Searched by a term the CREATED call
+    # actually carries — "SOC2" appears only in the shipped call's transcript, so it can
+    # never match a call that has none.
+    created_hits = client.get(
+        "/api/v1/search",
+        params={"q": "created_only", "status": "CREATED"},
+    ).json()
     assert all(c["status"] == "CREATED" for c in created_hits["groups"]["calls"])
     assert any(c["id"] == created_only for c in created_hits["groups"]["calls"])
 

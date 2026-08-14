@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.enums import CallStatus, InsightType, SpeakerRole
 from app.models.analysis import AnalysisRun, Insight
@@ -117,8 +118,8 @@ def _call_filters(
     from_date: date | None,
     to_date: date | None,
     call_id: UUID | None,
-) -> list[object]:
-    clauses: list[object] = []
+) -> list[ColumnElement[bool]]:
+    clauses: list[ColumnElement[bool]] = []
     if call_id is not None:
         clauses.append(Call.id == call_id)
     if statuses:
