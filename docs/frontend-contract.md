@@ -77,6 +77,18 @@ extractors cannot produce a refusal (each filters by speaker role before emittin
 refusals only begin once model-proposed candidates flow through the gate. Build the UI to
 handle 0 gracefully; it is the current correct value, not a bug.
 
+## Battlecard fields
+
+`report.battlecard` is fully deterministic — fixed strings chosen by lookup, plus document
+names lifted verbatim from the transcript. No model call, nothing invented.
+
+| Field | Meaning |
+|---|---|
+| `documents_to_send` | Document names the rep named on the call (e.g. `"SOC2 report"`), extracted from their own words and capped at 80 chars. Empty is a legitimate answer — it means no document was named. It previously held the raw text of every seller commitment, so a full sentence could render as a "document"; it no longer does. |
+| `seller_commitments` | The raw text of each seller commitment — what `documents_to_send` used to contain, under a name that describes it. |
+| `top_deal_killer` | The `payload.kind` of the highest-priority deal killer, chosen by a fixed priority so the pick never depends on insight ordering. Evidenced blockers outrank absence-based ones. `null` when nothing was evidenced. |
+| `primary_goal` / `questions_to_ask` | Templated from `top_deal_killer` and the qualification dimensions the transcript never supported, so two calls do not produce identical cards. Falls back to a generic three when a call evidenced nothing. Max 5 questions. |
+
 ## Processing events (GAP-BE-007)
 
 `EventOut.stage` uses CallStatus vocabulary: `CREATED`, `UPLOADING`, `QUEUED`, `TRANSCRIBING`,
